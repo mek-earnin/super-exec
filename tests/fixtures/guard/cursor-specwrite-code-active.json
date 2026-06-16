@@ -1,0 +1,6 @@
+{
+  "tool_input": {
+    "file_path": "docs/specs/payment-retry.md",
+    "content": "# Payment retry\n\n```ts\nexport const retry = () => {};\n```\n"
+  }
+}

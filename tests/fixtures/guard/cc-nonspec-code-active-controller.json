@@ -1,0 +1,6 @@
+{
+  "tool_input": {
+    "file_path": "src/payments/retry.ts",
+    "content": "```ts\nexport const retry = () => {};\n```\n"
+  }
+}

@@ -303,6 +303,14 @@ while IFS= read -r fixture_name; do
             } else {
               process.stdout.write('ok:n2_nudge');
             }
+          } else if (nudge === 'n3') {
+            if (!ctx || !ctx.trim()) {
+              process.stdout.write('fail:n3_expected_additionalContext_but_empty');
+            } else if (!/spec|what-only|code|plan|docs\/specs/i.test(ctx)) {
+              process.stdout.write('fail:n3_context_does_not_mention_spec_code_plan');
+            } else {
+              process.stdout.write('ok:n3_nudge');
+            }
           } else {
             process.stdout.write('ok:allow');
           }

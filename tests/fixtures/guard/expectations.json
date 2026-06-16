@@ -132,6 +132,78 @@
       "nudge": "none",
       "failClosed": false,
       "notes": "Cursor has no allow-path context injection. N1/N2 nudges degrade to plain allow. The harness sets CURSOR_PROJECT_DIR and CURSOR_PLUGIN_ROOT."
+    },
+    "cc-specwrite-code-active-controller.json": {
+      "description": "CC: write fenced code into docs/specs/*.md + active + controller → allow + N3 nudge",
+      "harness": "cc",
+      "markers": {
+        "active": true,
+        "gate-open": false
+      },
+      "expect": "allow",
+      "nudge": "n3",
+      "failClosed": false,
+      "notes": "Spec write whose content contains a code fence. A spec is WHAT-only — nudge to move implementation/code to the plan."
+    },
+    "cc-specwrite-code-active-subagent.json": {
+      "description": "CC: write fenced code into docs/specs/*.md + active + subagent → allow + N3 nudge",
+      "harness": "cc",
+      "markers": {
+        "active": true,
+        "gate-open": false
+      },
+      "expect": "allow",
+      "nudge": "n3",
+      "failClosed": false,
+      "notes": "N3 is NOT gated on agent_id — it fires for subagents too. A subagent writing code into a spec gets the same nudge."
+    },
+    "cc-specwrite-nocode-active-controller.json": {
+      "description": "CC: write spec under docs/specs/*.md with NO code fence + active + controller → allow, NO nudge",
+      "harness": "cc",
+      "markers": {
+        "active": true,
+        "gate-open": false
+      },
+      "expect": "allow",
+      "nudge": "none",
+      "failClosed": false,
+      "notes": "Spec write without a fenced code block. N3 only fires when the content contains a code fence — no fence, no nudge."
+    },
+    "cc-specwrite-code-no-markers.json": {
+      "description": "CC: write fenced code into docs/specs/*.md + NO markers → allow silently (plugin inert)",
+      "harness": "cc",
+      "markers": {
+        "active": false,
+        "gate-open": false
+      },
+      "expect": "allow",
+      "nudge": "none",
+      "failClosed": false,
+      "notes": "With no markers present the guard is inert. N3 requires the active marker — no nudge here."
+    },
+    "cc-nonspec-code-active-controller.json": {
+      "description": "CC: write fenced code into a NON-spec path (src/) + active + controller → allow, NO nudge",
+      "harness": "cc",
+      "markers": {
+        "active": true,
+        "gate-open": false
+      },
+      "expect": "allow",
+      "nudge": "none",
+      "failClosed": false,
+      "notes": "Only writes under docs/specs/*.md trigger N3. Code fences in normal source files are fine — no nudge."
+    },
+    "cursor-specwrite-code-active.json": {
+      "description": "Cursor: write fenced code into docs/specs/*.md + active → allow (N3 degrades to prose on Cursor)",
+      "harness": "cursor",
+      "markers": {
+        "active": true,
+        "gate-open": false
+      },
+      "expect": "allow",
+      "nudge": "none",
+      "failClosed": false,
+      "notes": "Cursor has no generic pre-file hook, so N3 cannot fire. The guard falls through to a silent allow; the nudge degrades to prose."
     }
   }
 }

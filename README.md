@@ -4,7 +4,7 @@ A gate-driven development workflow for Claude Code (and Cursor), shipped as a pl
 feature from **shared understanding → spec → plan → build → verify → review → PR**, while enforcing
 the discipline you'd otherwise correct by hand: delegate heavy work to subagents, verify before
 claiming done, stay in scope, reuse before writing, respect each repo's own conventions, and never
-auto-commit or auto-reply where a human belongs.
+commit while a human-review gate is open.
 
 You stay in control at every gate. super-exec does the legwork in between.
 
@@ -15,7 +15,7 @@ You stay in control at every gate. super-exec does the legwork in between.
 super-exec is a plugin marketplace. Install it per repo:
 
 ```
-/plugin marketplace add activehours/super-exec
+/plugin marketplace add mek-earnin/super-exec
 /plugin install super-exec
 ```
 
@@ -40,16 +40,23 @@ Two sessions, one hard boundary at **plan → build**.
 
 ```mermaid
 flowchart TD
-    A([You: /se-shape]) --> B[super-exec: interview you to a shared spec]
-    B --> G1{{🧑 You: review + commit the spec}}
-    G1 --> C([You: /se-plan])
+    A([🧑 You: /se-shape]) --> B[super-exec: interview you to a shared spec]
+    B --> G1{{🧑 You: approve the spec — super-exec commits it}}
+    G1 --> C[super-exec: auto-continues to planning]
     C --> D[super-exec: design architecture + verification, bind repo skills]
     D --> G2{{🧑 You: review the plan}}
-    G2 --> E([You: fresh session, /se-exec])
+    G2 --> E([🧑 You: fresh session, /se-exec])
     E --> F[super-exec: build → verify → review, task by task]
-    F --> G3{{🧑 You: approve the PR}}
-    G3 --> H([📦 Pull request])
+    F --> G3{{🧑 You: final review + 'create a draft PR?' — Auto-PR OFF only}}
+    G3 --> H([📦 Pull request draft])
 ```
+
+The **shape → plan** hop is automatic: once you approve the spec, super-exec commits it and continues
+straight into planning in the same session. The only hard boundary is **plan → build** — start `/se-exec`
+in a fresh session. At build entry you set two toggles: *review before each commit?* and *Auto-PR?*
+The second is the "human in the loop?" switch — Auto-PR **ON** skips the
+final review and opens the PR automatically; **OFF** stops for your work-review and asks whether to open
+a draft PR (a "no" ends the session with no PR).
 
 ### Who does what
 
@@ -59,9 +66,9 @@ flowchart TD
 | Answer the interview (the **WHAT**) | Drafts the spec to a fixed template; sharpens terms |
 | Resolve open questions in planning (the **HOW**) | Creates the branch, designs architecture + verification |
 | Confirm the ticket / branch | Binds repo skills to tasks (reuse over hand-rolling) |
-| **Review + commit** the spec & plan | Implements each task in subagents |
-| Set 2 toggles once (review-before-commit? auto-PR?) | Verifies with real evidence (runner runs it, a strong model judges) |
-| **Approve** the PR | Reviews its own code, fixes, commits, opens the PR draft |
+| **Review + approve** the spec & plan | Commits the spec; implements each task in subagents |
+| Set 2 toggles once (review before each commit? Auto-PR?) | Verifies with real evidence (runner runs it, a strong model judges) |
+| **Review** the work at the final gate (Auto-PR OFF) | Reviews its own code, fixes, commits, then opens the PR draft |
 
 The heavy, context-burning work (builds, tests, searches, reviews) runs in throwaway subagents — your
 session stays lean. Nothing claims "done" without shown evidence, and nothing commits while a review
@@ -85,10 +92,12 @@ gate is open.
 |---|---|
 | `se-verify` | Inner loop — runs the baseline + task verification and judges the evidence against spec + plan. |
 | `se-review` | Outer loop — arch-gate → deep review (data-flow → reuse → consistency) → severity-tagged findings, with a realism filter. |
-| `se-pr` | Final review gate + PR creation (delegates to the repo's `create-pr` skill, or mirrors `pull_request_template.md`). |
+| `se-pr` | PR creation only (the final review gate lives in se-exec). Delegates to the repo's `create-pr` skill, or mirrors `pull_request_template.md`. |
 | `se-handoff` | Writes a resume handoff when the build session approaches its context limit. |
 
-Plus references the skills read at runtime: `model-tiers`, `tool-map`, `branch-gate`, `worktree`.
+Each skill keeps its bulky bits in sibling files it reads on demand — `branch-gate`, `worktree`, and the
+spec / plan / PR / handoff templates. Skills are written in Claude Code language; Cursor users get a single
+one-way CC→Cursor translation table at `using-super-exec/references/cursor-tools.md`.
 
 ---
 

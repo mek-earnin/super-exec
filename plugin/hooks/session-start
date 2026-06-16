@@ -11,12 +11,18 @@
 # MARKER             WRITTEN BY                       CLEARED BY
 # ─────────────────────────────────────────────────────────────────────────────
 # .super-exec/active   A /se-* driver skill on its       se-pr on PR completion;
-#                      session-activation step            OR stale-TTL sweep on
-#                      (se-shape, se-plan, se-exec).      session-start (see below).
+#                      session-activation step            se-exec on the no-PR exit
+#                      (se-shape, se-plan, se-exec).      (final review with *Finish
+#                                                         Auto-PR OFF and the user
+#                                                         declines the PR); OR the
+#                                                         stale-TTL sweep on
+#                                                         session-start (see below).
 #
-# .super-exec/gate-open  se-exec (review-before-commit    The writing step once the
-#                        toggle) and se-pr (final review). gate resolves (human
-#                                                          approves the review).
+# .super-exec/gate-open  se-exec — both the review-       se-exec, once the gate
+#                        before-commit toggle AND the     resolves (human approves
+#                        end-of-build final-review gate   the review).
+#                        (NOT se-pr; se-pr no longer
+#                        manages this marker).
 #
 # GUARD BEHAVIOUR (plugin/hooks/guard):
 #   - Inert when .super-exec/active is absent, EXCEPT B1 (below).
@@ -27,6 +33,11 @@
 #     use the repo's git/PR skill via a subagent.
 #   - N1 (nudge): active + controller + build/test → allow + context nudge to
 #     delegate heavy work to a subagent.
+#   - N3 (nudge): active + write to docs/specs/*.md containing a fenced code
+#     block → allow + context nudge that the spec is WHAT-only and code belongs
+#     in the plan. Fires for controller AND subagents (code in a spec is wrong
+#     wherever written). Cursor has no generic pre-file event, so N3 degrades to
+#     prose there (not emitted).
 #   - Subagents (agent_id present in CC payload) never receive N1/N2.
 #   - On Cursor: N1/N2 degrade to prose (no nudge emitted); B1 runs natively.
 #

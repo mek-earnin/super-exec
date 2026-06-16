@@ -62,8 +62,8 @@ directory. All reads, edits, and shell commands they issue target that path.
 
 `.super-exec/` markers and the plan directory live in the **main repo**, not
 the worktree. The guard and the controller both resolve `.super-exec/` from
-the project root reported by `CLAUDE_PROJECT_DIR` (or `CURSOR_PROJECT_DIR`),
-which points at the main checkout. The worktree has no `.super-exec/`
+the project root reported by `CLAUDE_PROJECT_DIR`, which points at the main
+checkout. The worktree has no `.super-exec/`
 directory; guards and gate checks continue to work correctly because they
 read from the main repo root.
 
@@ -81,9 +81,10 @@ without change: the runner returns structured evidence; the judge evaluates
 it against the spec and plan.
 
 Commits also happen in the worktree. The commit appears on the worktree's
-branch, not on the main checkout's branch. The repo commit skill (e.g.
-`git-commit-message`) runs inside a runner subagent with the worktree path
-as its working directory — the same discipline as any other git operation.
+branch, not on the main checkout's branch. Worktree mode does **not** change
+how commits work — commit through **`se-commit`** exactly as in the main
+checkout. The only worktree-specific delta is that the runner subagent is
+given the **worktree path** as its working directory.
 
 ---
 
@@ -150,7 +151,7 @@ implementer task runs.
 No git command — `git worktree add`, `git commit`, `git worktree remove`,
 `git worktree prune`, or any other — runs inline in the controller. Every
 git operation is dispatched to a runner subagent (cheap / script-runner
-tier, per `references/model-tiers.md`). The runner returns the exit code
+tier, see the `se-subagent` skill) with the `Task` tool. The runner returns the exit code
 and relevant output as structured evidence. The controller reads the
 evidence and decides the next step.
 

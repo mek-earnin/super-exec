@@ -5,9 +5,7 @@ description: Use when se-exec has just completed an implementer task and needs t
 
 # se-verify
 
-> **Reference paths:** every `references/*.md` cited lives at the plugin root — read it as `${CLAUDE_PLUGIN_ROOT}/references/<file>` on Claude Code, or `${CURSOR_PLUGIN_ROOT}/references/<file>` on Cursor.
-
-se-verify is the **inner verification loop** invoked by se-exec after an implementer subagent completes a task. It operates a strict runner→judge cycle: a cheap runner subagent executes verification in its own throwaway context, a strong judge evaluates the returned evidence, and — if the judge finds anything short of green — a fixer subagent addresses the specific failure before the cycle repeats. The loop continues until the judge passes, with shown evidence, at which point the skill reports **inner-loop-green**.
+se-verify is the **inner verification loop** invoked by se-exec after an implementer subagent completes a task. It operates a strict runner→judge cycle: a cheap runner subagent executes verification in its own throwaway context, a strong judge evaluates the returned evidence, and — if the judge finds anything short of green — a fixer subagent addresses the specific failure before the cycle repeats. The loop continues until the judge passes, with shown evidence, at which point the skill reports **inner-loop-green**. If the judge determines a failure is an implementation limitation (the spec is unachievable as written — not a fixable bug), the verifier reports **limitation-blocked** to se-exec instead of looping the fixer.
 
 **Checkpoint definition:** *inner-loop-green = the baseline AND the task-specific verification both pass, with the runner's actual evidence shown and the judge's explicit pass rendered.*
 
@@ -21,7 +19,7 @@ Complete every item in order. Do not skip or reorder steps. Do not advance past 
 
 - [ ] **1. Receive the task context.** Confirm you have in hand: (a) the task description from the plan, (b) the plan's **verification design** — specifically the recorded baseline commands (e.g. `lint:fix` + `type-check`, or `dotnet build`) and the task-specific verification method (test suite, browser check, endpoint call, or custom script). If either is missing, halt and ask se-exec to supply them before proceeding.
 
-- [ ] **2. Dispatch the RUNNER subagent (cheap / script-runner tier).** See `references/model-tiers.md` for the concrete model and `references/tool-map.md` for the subagent dispatch primitive (`Task` tool on Claude Code; composer subagent on Cursor). Give the runner:
+- [ ] **2. Dispatch the RUNNER subagent (cheap / script-runner tier).** See the `se-subagent` skill for the concrete model and dispatch details. Dispatch the subagent with the `Task` tool. Give the runner:
   - The exact baseline commands from the plan's verification design. Run them first.
   - The task-specific verification commands or steps from the plan's verification design. Run them second.
   - An instruction to return **structured EVIDENCE only**: exit codes, pass/fail counts, relevant log excerpts, and — for UI tasks — screenshot file paths or DOM assertion results. No interpretation. No "it looks fine." Raw output is never echoed into the controller's context.
@@ -30,23 +28,31 @@ Complete every item in order. Do not skip or reorder steps. Do not advance past 
 
 - [ ] **3. Collect the runner's evidence.** Wait for the runner to return. Accept only structured EVIDENCE — exit codes, counts, relevant log lines, file paths. If the runner returns an interpretation ("it passed") without hard evidence, reject it and re-dispatch the runner with an explicit instruction to include exit codes and output excerpts.
 
-- [ ] **4. Dispatch the JUDGE subagent (strong non-fast tier).** See `references/model-tiers.md` for the concrete model. Supply the judge with:
+- [ ] **4. Dispatch the JUDGE subagent (strong non-fast tier).** See the `se-subagent` skill for the concrete model. Dispatch the subagent with the `Task` tool. Supply the judge with:
   - The task description from the plan.
   - The acceptance criteria from the spec.
   - The plan's verification design (what "pass" looks like for baseline and task-specific).
   - The runner's evidence in full.
 
-  Ask the judge one question: **does the evidence demonstrate that the baseline and the task-specific verification both pass, as required by the spec and plan?** The judge must render an explicit **PASS** or **FAIL**, not a hedge. Findings on a FAIL must be specific: which command failed, what the output showed, what must be fixed.
+  Ask the judge one question: **does the evidence demonstrate that the baseline and the task-specific verification both pass, as required by the spec and plan?** The judge must render an explicit **PASS**, **FAIL**, or **LIMITATION** — not a hedge.
+
+  - **PASS**: evidence is green; proceed to step 7.
+  - **FAIL**: findings must be specific — which command failed, what the output showed, what must be fixed. Proceed to step 5.
+  - **LIMITATION**: the spec is unachievable as written (not a fixable bug — an architectural or environmental constraint makes it impossible). The judge must state clearly why the failure cannot be fixed by the fixer. Proceed to step 6 (limitation-blocked path).
 
   **The runner runs; the judge decides. These are distinct roles and must never be collapsed into a single agent.**
 
-- [ ] **5. If the judge renders FAIL — dispatch the FIXER subagent (implementer/mid tier).** See `references/model-tiers.md` for the concrete model. Give the fixer:
+- [ ] **5. If the judge renders FAIL — dispatch the FIXER subagent (implementer / mid tier, PINNED to `sonnet` on CC).** See the `se-subagent` skill. Dispatch the subagent with the `Task` tool. Give the fixer:
   - The judge's specific failure finding(s) — not the full context, just what is broken and what the evidence showed.
   - The relevant task description and acceptance criteria.
 
   The fixer must not gold-plate, scope-creep, or rewrite unrelated code. It addresses the specific failure only.
 
-- [ ] **6. After the fixer completes — return to step 2.** Re-dispatch the runner. Re-collect evidence. Re-dispatch the judge. Repeat the loop until the judge renders an explicit PASS.
+  **Before re-dispatching the fixer**, confirm the judge's finding describes a fixable bug — not an implementation limitation. If the judge's FAIL finding indicates the spec is structurally unachievable, treat it as a LIMITATION and proceed to step 6 instead.
+
+  After the fixer completes — return to step 2. Re-dispatch the runner. Re-collect evidence. Re-dispatch the judge. Repeat the loop until the judge renders an explicit PASS or LIMITATION.
+
+- [ ] **6. If the judge renders LIMITATION — report limitation-blocked.** Do not dispatch the fixer. Report **limitation-blocked** to se-exec. Include in the report: the task name, the judge's specific finding (why the spec is unachievable as written), and the evidence the runner returned. se-exec owns the limitation-escalation decision tree — workaround, amend spec to closest-achievable, or ask the human. The verifier's role ends here.
 
 - [ ] **7. Report inner-loop-green.** Only when the judge has rendered an explicit PASS with the runner's evidence in hand, report: **inner-loop-green**. Include in the report: the task name, the baseline evidence summary (exit codes or counts), the task-specific evidence summary, and the judge's pass statement. This report is the only acceptable signal to se-exec that the task is verified.
 
@@ -62,22 +68,23 @@ When you catch yourself about to do any of the following, STOP and apply the cor
 | "The implementer said it works." | Accept the implementer's word and skip verification. | Require the runner's evidence. The implementer's claim is not evidence. Trust nothing; verify everything. |
 | "It should render fine / compile cleanly — let's move on." | Skip or abbreviate verification for UI or build tasks based on static reasoning. | UI tasks require real-browser evidence — a screenshot or DOM assertion from playwright against the repo dev-server, not "it should render." Compile tasks require the build exit code and output. |
 | "Close enough — mark it done." | Report inner-loop-green before the judge has rendered an explicit PASS. | No done-claim without the judge's explicit PASS and the runner's shown evidence. "Close enough" is not a pass. |
-| "The runner and judge can be the same cheap agent — it's faster." | Use the script-runner tier model for judgment, or fold both roles into one subagent. | The judge is the strong non-fast tier (Opus on CC; default-inherit on Cursor). The roles are separate by design: the runner reports facts; the judge reasons about correctness against spec + plan. Never collapse them. |
+| "The runner and judge can be the same cheap agent — it's faster." | Use the script-runner tier model for judgment, or fold both roles into one subagent. | The judge is the strong non-fast tier. The roles are separate by design: the runner reports facts; the judge reasons about correctness against spec + plan. Never collapse them. |
 | "I'll skip the baseline — it passed last time." | Run only task-specific verification and skip the baseline suite. | The baseline runs on every cycle, without exception. A previous pass does not exempt the current cycle — the fixer may have introduced a regression. |
 | "The judge said PASS, but I'll skip showing the evidence." | Report inner-loop-green without including the evidence summary in the report. | The evidence must be shown in the report. A PASS without evidence is not an inner-loop-green report. |
 | "I'll fold the fixer feedback into the runner prompt." | Tell the runner what to fix and then verify in the same pass. | Fixer and runner are separate subagents with separate dispatches. The fixer fixes; then the runner verifies from scratch; then the judge evaluates. Never mix the roles. |
+| "Re-dispatching the fixer on a failure that is an unfixable implementation limitation." | Loop the fixer indefinitely on a spec that cannot be satisfied as written. | Stop the loop and report `limitation-blocked` to se-exec. Only se-exec's limitation tree resolves it (workaround, amend spec to closest-achievable, or ask the human). |
 
 ---
 
 ## Model and Tool Assignments
 
-Resolve all concrete model IDs and dispatch primitives from the reference files — do not hardcode them here.
+Resolve all concrete model IDs and dispatch details from the `se-subagent` skill.
 
 | Role | Prose alias | Reference |
 |---|---|---|
-| Runner | cheap / script-runner tier | `references/model-tiers.md` → "Script-runner" row |
-| Judge / Verifier | strong non-fast tier | `references/model-tiers.md` → "Shape interview · Plan · Review · verifier judgment" row |
-| Fixer | implementer / mid tier (PINNED to Sonnet on CC) | `references/model-tiers.md` → "Implementer · Fixer" row and pinned-to-Sonnet policy |
-| Subagent dispatch | `Task` tool (CC) / composer subagent (Cursor) | `references/tool-map.md` → "Subagent Dispatch" section |
+| Runner | cheap / script-runner tier | `se-subagent` skill → "Script-runner" row |
+| Judge / Verifier | strong non-fast tier | `se-subagent` skill → "Shape interview · Plan · Review · verifier judgment" row |
+| Fixer | implementer / mid tier (PINNED to `sonnet` on CC) | `se-subagent` skill → "Implementer · Fixer" row and pinned-to-sonnet policy |
+| Subagent dispatch | `Task` tool | `se-subagent` skill → "Subagent Dispatch" section |
 
 **UI verification:** when the plan's verification design specifies browser-based evidence, the runner uses playwright via the repo dev-server skill if present. The runner must return a screenshot path or a DOM assertion result. "It should render" from a static analysis is not browser evidence.
