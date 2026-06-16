@@ -1,0 +1,113 @@
+# super-exec
+
+A gate-driven development workflow for Claude Code (and Cursor), shipped as a plugin. It carries a
+feature from **shared understanding → spec → plan → build → verify → review → PR**, while enforcing
+the discipline you'd otherwise correct by hand: delegate heavy work to subagents, verify before
+claiming done, stay in scope, reuse before writing, respect each repo's own conventions, and never
+auto-commit or auto-reply where a human belongs.
+
+You stay in control at every gate. super-exec does the legwork in between.
+
+---
+
+## Install
+
+super-exec is a plugin marketplace. Install it per repo:
+
+```
+/plugin marketplace add <super-exec-git-url>
+/plugin install super-exec
+```
+
+That's it — open a session in the target repo and super-exec orients you automatically.
+
+### Optional dependencies (graceful — never required)
+
+super-exec is **self-contained**. These make it nicer when present and are skipped silently when not:
+
+| Install | When | What it adds |
+|---|---|---|
+| **impeccable** | You work on **UI** (frontend apps, components, styles) | Production-grade UI design direction, build (`craft`), and review (`critique`). Recommended if you touch UI. |
+| **caveman** | You want terse, high-signal chat | Compresses the shape interview's phrasing (keeps all substance). |
+
+If neither is installed, super-exec runs the full workflow anyway and tells you what it skipped.
+
+---
+
+## The workflow, from your side
+
+Two sessions, one hard boundary at **plan → build**.
+
+```mermaid
+flowchart TD
+    A([You: /se-shape]) --> B[super-exec: interview you to a shared spec]
+    B --> G1{{🧑 You: review + commit the spec}}
+    G1 --> C([You: /se-plan])
+    C --> D[super-exec: design architecture + verification, bind repo skills]
+    D --> G2{{🧑 You: review the plan}}
+    G2 --> E([You: fresh session, /se-exec])
+    E --> F[super-exec: build → verify → review, task by task]
+    F --> G3{{🧑 You: approve the PR}}
+    G3 --> H([📦 Pull request])
+```
+
+### Who does what
+
+| 🧑 You give / decide | 🤖 super-exec automates |
+|---|---|
+| Run `/se-shape`, `/se-plan`, `/se-exec` | Researches the codebase via subagents (instead of asking) |
+| Answer the interview (the **WHAT**) | Drafts the spec to a fixed template; sharpens terms |
+| Resolve open questions in planning (the **HOW**) | Creates the branch, designs architecture + verification |
+| Confirm the ticket / branch | Binds repo skills to tasks (reuse over hand-rolling) |
+| **Review + commit** the spec & plan | Implements each task in subagents |
+| Set 2 toggles once (review-before-commit? auto-PR?) | Verifies with real evidence (runner runs it, a strong model judges) |
+| **Approve** the PR | Reviews its own code, fixes, commits, opens the PR draft |
+
+The heavy, context-burning work (builds, tests, searches, reviews) runs in throwaway subagents — your
+session stays lean. Nothing claims "done" without shown evidence, and nothing commits while a review
+gate is open.
+
+---
+
+## What's in the box
+
+**Three things you invoke** (type `/name`, or just describe the work and the model picks it up):
+
+| Tool | What it does | When to use |
+|---|---|---|
+| **`/se-shape`** | Design session. Interviews you to a shared spec (the WHAT only), behind a docs-review gate. | Starting a new feature or changing behavior. |
+| **`/se-plan`** | Plan session. Turns a committed spec into an architecture + verification plan; binds repo skills to tasks. Also re-enters an existing plan. | After a spec is committed, or to re-plan. |
+| **`/se-exec`** | Build session. Runs the execute→verify→review loops task by task, then opens the PR. Resumes from a handoff if context ran out. | After a plan is reviewed. Start in a fresh session. |
+
+**Helpers it runs for you** (you don't invoke these directly):
+
+| Skill | Role |
+|---|---|
+| `se-verify` | Inner loop — runs the baseline + task verification and judges the evidence against spec + plan. |
+| `se-review` | Outer loop — arch-gate → deep review (data-flow → reuse → consistency) → severity-tagged findings, with a realism filter. |
+| `se-pr` | Final review gate + PR creation (delegates to the repo's `create-pr` skill, or mirrors `pull_request_template.md`). |
+| `se-handoff` | Writes a resume handoff when the build session approaches its context limit. |
+
+Plus references the skills read at runtime: `model-tiers`, `tool-map`, `branch-gate`, `worktree`.
+
+---
+
+## Conventions: your repo always wins
+
+For anything convention-bearing (branch, commit, PR, verification), super-exec follows **your repo's
+own skill first** (e.g. `git-new-branch`, `git-commit-message`, `create-pr`), then a detected repo
+pattern, then its own built-in default. It ships complete defaults so it works in a bare repo — but a
+repo with opinions overrides them, every time. Drop-in, no configuration.
+
+---
+
+## Where things live
+
+| Artifact | Location | Committed? |
+|---|---|---|
+| Spec | `docs/specs/<feature>.md` | yes (you commit it at the gate) |
+| ADR / glossary | `docs/adr/…`, `CONTEXT.md` | yes, sparingly |
+| Plan / handoff | `.super-exec/<feature>/<date>-<plan>/` | no — local, gitignored |
+
+Plans are local; teammates share only the spec. super-exec adds `.super-exec/` and `research/` to your
+`.gitignore` automatically.
