@@ -27,6 +27,8 @@ Manual babysitting. Across ~2,627 past prompts in 7 EarnIn repos, the same corre
 
 Two sessions, one hard boundary at plan → execute.
 
+super-exec ships as **skills only** — the three entrypoints (`se-shape`, `se-plan`, `se-exec`) are skills invoked as `/se-shape` etc. (or auto-invoked by the model when the work matches); there is no separate slash-command layer. Each writes the `.super-exec/active` session marker on entry, so the behavior is identical whether invoked manually or automatically (see ADR 0003).
+
 ### Session 1 — design
 
 **`/se-shape`** drives the whole session:
@@ -159,11 +161,10 @@ super-exec/
 ├── .claude-plugin/marketplace.json   # source: ./plugin
 ├── plugin/                           # the installed plugin
 │   ├── .claude-plugin/plugin.json
-│   ├── skills/  se-{shape,plan,exec,verify,review}/ + helpers (se-branch-gate, se-pr, se-handoff)
-│   ├── commands/                     # /se-shape, /se-plan, /se-exec
+│   ├── skills/  se-{shape,plan,exec,verify,review}/ + helpers (se-pr, se-handoff)
 │   ├── hooks/                        # PreToolUse guards + SessionStart marker
 │   ├── .cursor-plugin/               # Cursor config
-│   └── references/tool-map.md        # CC↔Cursor tool-name mapping
+│   └── references/   tool-map.md (CC↔Cursor), model-tiers.md, branch-gate.md, worktree.md
 ├── docs/specs/core-workflow.md       # this spec (dogfood)
 ├── research/                         # gitignored, local-only
 └── README.md
@@ -191,7 +192,7 @@ Authored and dogfooded on Claude Code; skill bodies use harness-neutral prose ("
 
 ## Decisions
 
-See `docs/adr/` for: repo-skill delegation precedence; local-only plans / spec-plan visibility boundary. (Created on acceptance.)
+See `docs/adr/` for: repo-skill delegation precedence (0001); local-only plans / spec-plan visibility boundary (0002); skills-only entrypoints, no thin commands (0003).
 
 ## Fast-follow (post-v1)
 
