@@ -15,7 +15,7 @@ You stay in control at every gate. super-exec does the legwork in between.
 super-exec is a plugin marketplace. Install it per repo:
 
 ```
-/plugin marketplace add <super-exec-git-url>
+/plugin marketplace add activehours/super-exec
 /plugin install super-exec
 ```
 
