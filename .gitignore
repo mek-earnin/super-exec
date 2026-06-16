@@ -3,3 +3,7 @@
 
 # research mined from past conversations — local-only, may contain internal data
 research/
+
+# macOS Finder metadata
+.DS_Store
+**/.DS_Store
