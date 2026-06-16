@@ -1,0 +1,6 @@
+{
+  "tool_input": {
+    "command": "npm test"
+  },
+  "agent_id": "subagent-abc-123"
+}

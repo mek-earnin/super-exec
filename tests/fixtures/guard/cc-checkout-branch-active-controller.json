@@ -1,0 +1,5 @@
+{
+  "tool_input": {
+    "command": "git checkout -b foo origin/develop^0"
+  }
+}

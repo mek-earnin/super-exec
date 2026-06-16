@@ -1,0 +1,137 @@
+{
+  "_comment": "Expectations manifest for guard fixture tests. The test harness reads this file, creates a temp project dir with the specified markers, sets env vars per 'harness', pipes the fixture JSON to the guard script, and asserts the 'expect' outcome. Marker state is encoded here — NOT as real files in the repo.",
+  "fixtures": {
+    "cc-commit-gate-open-controller.json": {
+      "description": "CC: git commit + gate-open + no agent_id (controller) → B1 hard block",
+      "harness": "cc",
+      "markers": {
+        "active": true,
+        "gate-open": true
+      },
+      "expect": "deny",
+      "nudge": "none",
+      "failClosed": false,
+      "notes": "B1 is context-agnostic; controller vs subagent does not matter here, but this case uses controller to exercise the most common real scenario."
+    },
+    "cc-commit-gate-open-subagent.json": {
+      "description": "CC: git commit + gate-open + agent_id present (subagent) → B1 hard block",
+      "harness": "cc",
+      "markers": {
+        "active": true,
+        "gate-open": true
+      },
+      "expect": "deny",
+      "nudge": "none",
+      "failClosed": false,
+      "notes": "B1 fires regardless of agent_id. Subagents are not exempt from the commit block."
+    },
+    "cc-commit-active-no-gate-controller.json": {
+      "description": "CC: git commit + active + NO gate-open + controller → allow + N2 nudge",
+      "harness": "cc",
+      "markers": {
+        "active": true,
+        "gate-open": false
+      },
+      "expect": "allow",
+      "nudge": "n2",
+      "failClosed": false,
+      "notes": "Controller running git commit during an active session should be nudged to use the repo git skill via a subagent instead."
+    },
+    "cc-commit-active-no-gate-subagent.json": {
+      "description": "CC: git commit + active + NO gate-open + subagent → allow, NO nudge",
+      "harness": "cc",
+      "markers": {
+        "active": true,
+        "gate-open": false
+      },
+      "expect": "allow",
+      "nudge": "none",
+      "failClosed": false,
+      "notes": "Subagents are where git work belongs. No nudge emitted — they should run the command."
+    },
+    "cc-npm-test-active-controller.json": {
+      "description": "CC: npm test + active + controller → allow + N1 nudge",
+      "harness": "cc",
+      "markers": {
+        "active": true,
+        "gate-open": false
+      },
+      "expect": "allow",
+      "nudge": "n1",
+      "failClosed": false,
+      "notes": "Controller running npm test inline should be nudged to delegate to a throwaway subagent."
+    },
+    "cc-npm-test-active-subagent.json": {
+      "description": "CC: npm test + active + subagent → allow, NO nudge",
+      "harness": "cc",
+      "markers": {
+        "active": true,
+        "gate-open": false
+      },
+      "expect": "allow",
+      "nudge": "none",
+      "failClosed": false,
+      "notes": "Subagents should run build/test directly — no nudge."
+    },
+    "cc-checkout-branch-active-controller.json": {
+      "description": "CC: git checkout -b + active + controller → allow, NO nudge (branch creation is not a git mutate)",
+      "harness": "cc",
+      "markers": {
+        "active": true,
+        "gate-open": false
+      },
+      "expect": "allow",
+      "nudge": "none",
+      "failClosed": false,
+      "notes": "git checkout -b is branch creation (read-ish setup), not a git mutate. Must NOT match isGitMutate or isCommit."
+    },
+    "cc-git-status-active-controller.json": {
+      "description": "CC: git status + active + controller → allow, NO nudge (read op)",
+      "harness": "cc",
+      "markers": {
+        "active": true,
+        "gate-open": false
+      },
+      "expect": "allow",
+      "nudge": "none",
+      "failClosed": false,
+      "notes": "git status is a read operation. Must not trigger N2 or any block."
+    },
+    "cc-commit-no-markers.json": {
+      "description": "CC: git commit + NO active + NO gate-open → allow silently (plugin inert)",
+      "harness": "cc",
+      "markers": {
+        "active": false,
+        "gate-open": false
+      },
+      "expect": "allow",
+      "nudge": "none",
+      "failClosed": false,
+      "notes": "With no markers present, the guard is completely inert. Exit 0 with no JSON output."
+    },
+    "cursor-commit-gate-open.json": {
+      "description": "Cursor: git commit + gate-open → deny + failClosed:true",
+      "harness": "cursor",
+      "markers": {
+        "active": true,
+        "gate-open": true
+      },
+      "expect": "deny",
+      "nudge": "none",
+      "failClosed": true,
+      "notes": "Cursor B1. The response must include failClosed:true in the JSON output."
+    },
+    "cursor-npm-test-active.json": {
+      "description": "Cursor: npm test + active → allow (N1 nudge degrades to prose on Cursor)",
+      "harness": "cursor",
+      "markers": {
+        "active": true,
+        "gate-open": false
+      },
+      "expect": "allow",
+      "nudge": "none",
+      "failClosed": false,
+      "notes": "Cursor has no allow-path context injection. N1/N2 nudges degrade to plain allow. The harness sets CURSOR_PROJECT_DIR and CURSOR_PLUGIN_ROOT."
+    }
+  }
+}

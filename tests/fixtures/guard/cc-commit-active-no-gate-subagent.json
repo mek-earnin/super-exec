@@ -1,0 +1,6 @@
+{
+  "tool_input": {
+    "command": "git commit -m \"feat: add new feature\""
+  },
+  "agent_id": "subagent-abc-123"
+}
