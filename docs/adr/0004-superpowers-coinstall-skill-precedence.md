@@ -1,0 +1,22 @@
+# Best-effort skill precedence when superpowers is co-installed
+
+When the `superpowers` plugin is installed alongside super-exec, both inject an always-on bootstrap that claims the development workflow on the same triggers ("let's build X", "add Y", "change Z"). superpowers' `using-superpowers` is wrapped in `<EXTREMELY_IMPORTANT>` and tells the model to invoke a superpowers skill on a 1% match; super-exec's `using-super-exec` is injected by its SessionStart hook. With no tiebreaker, the model may drive feature work through `superpowers:brainstorming → writing-plans → executing-plans` instead of `se-shape → se-plan → se-exec`. This was observed live, not hypothesised.
+
+super-exec asserts a **best-effort scoped override**: it wins the workflow-*driver* role wherever the two overlap, while superpowers stays available for needs super-exec does not cover. The override is carried by an `<EXTREMELY_IMPORTANT>`-wrapped clause in `using-super-exec` (always injected) plus a detection-gated present-tense emphasis in the SessionStart hook. It is model-facing only — no user greeting, no prompt to disable superpowers.
+
+## Considered options
+
+- **Document-only.** Note the overlap in the README and let the user pick. Rejected: the live drift (the model silently choosing superpowers) keeps happening; documentation does not change in-session behavior.
+- **Ignore superpowers wholesale + recommend disabling it.** Treat super-exec's presence as a hard "ignore all `superpowers:*`" and nag the user to disable the plugin. Rejected: superpowers has genuinely useful skills super-exec lacks (e.g. `systematic-debugging`, `writing-skills`); a blanket ignore throws those away, and a disable-nag is noise for a conflict the user may be fine with.
+- **Deterministic win via an `AGENTS.md` precedence line.** superpowers' own priority ladder obeys user `CLAUDE.md` / `AGENTS.md` above its skills, so a one-line note there would make the win deterministic. Rejected for now: it requires writing to a repo file the plugin does not own, against super-exec's drop-in / no-configuration posture. Left available as a future hardening, not the default.
+- **Tag-name escalation** (`<EXTREMELY_IMPORTANT_PRO_MAX>` / `_ULTRA`). Rejected: the wrapper name is a delimiter, not a priority dial — the model does not rank suffixes. An invented superlative buys no authority and reads as noise next to superpowers' real `<EXTREMELY_IMPORTANT>`.
+- **Best-effort scoped override (chosen).** Win the driver role on overlap; keep superpowers for gaps; assert it by specific, named clause content at `<EXTREMELY_IMPORTANT>` parity, plus detection-gated emphasis. No repo-file writes, no disable requirement. Honest about being best-effort, not deterministic.
+
+## Consequences
+
+- **Scope is the spine, not a blanket ignore.** The override names the overlap mapping (shape/plan/build/verify/review/worktree/PR/dispatch → super-exec) and explicitly preserves the gap skills. A future skill added to super-exec that closes a current gap must be moved from the gap bucket to the overlap mapping in `using-super-exec` and the spec.
+- **Specificity over volume.** Precedence is won by naming superpowers and the mapping, not by louder wrapping. The clause sits at `<EXTREMELY_IMPORTANT>` parity deliberately; escalating the tag name is prohibited by this ADR.
+- **Two layers, graceful degrade.** The always-present clause is conditionally worded ("if superpowers is also loaded") so it is a no-op when superpowers is absent — preserving the self-contained / "assume only super-exec" posture (see Packaging & distribution). The detection-gated emphasis fires only on a positive, best-effort detection; a missed detection still leaves the always-present clause, so precedence holds.
+- **Applies to subagents too.** The clause binds the controller and every dispatched subagent, so finders / implementers / verifiers / reviewers do not drift into a superpowers skill for spine work.
+- **No user-facing signal.** There is deliberately no greeting and no disable prompt; co-install with superpowers is silent to the user. If superpowers is absent, no superpowers-related text is surfaced anywhere.
+- **Not deterministic — and the spec says so.** super-exec does not claim to fully neutralise superpowers' bootstrap. The deterministic lever (`AGENTS.md`) remains a documented future option if best-effort proves insufficient in practice.

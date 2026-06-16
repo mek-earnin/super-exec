@@ -203,7 +203,33 @@ super-exec/
 
 Install per repo: `/plugin marketplace add <git-url>` then `/plugin install super-exec`.
 
-super-exec is **self-contained**: it bundles its own workflow discipline (taking only useful inspiration from existing skills like superpowers where relevant, never depending on them) and assumes a teammate has installed **only super-exec**. It has no runtime dependency on superpowers or any non-bundled skill; the optional externals are `impeccable` (UI design/build/critique) and `caveman` (concise shape-interview phrasing), both detect-and-skip and degrading gracefully. Repo-skill delegation is detection-based (ADR 0001), not a hard dependency.
+super-exec is **self-contained**: it bundles its own workflow discipline (taking only useful inspiration from existing skills like superpowers where relevant, never depending on them) and assumes a teammate has installed **only super-exec**. It has no runtime dependency on superpowers or any non-bundled skill; the optional externals are `impeccable` (UI design/build/critique) and `caveman` (concise shape-interview phrasing), both detect-and-skip and degrading gracefully. Repo-skill delegation is detection-based (ADR 0001), not a hard dependency. When the `superpowers` plugin happens to be co-installed, the two overlap and super-exec asserts a best-effort precedence — see **Coexistence with superpowers**.
+
+## Coexistence with superpowers (skill precedence)
+
+super-exec and the `superpowers` plugin both ship an always-injected bootstrap that claims the development workflow: superpowers injects `using-superpowers` wrapped in `<EXTREMELY_IMPORTANT>` ("if there is even a 1% chance a skill applies you MUST invoke it"); super-exec injects `using-super-exec` via its SessionStart hook. When both are installed they compete for the same triggers ("let's build X", "add Y", "change Z"), with no tiebreaker — so the model may drive feature work through superpowers' `brainstorming → writing-plans → executing-plans` instead of super-exec's `se-shape → se-plan → se-exec`. This is observed, not theoretical.
+
+**Resolution: a best-effort scoped override — super-exec wins the *driver* role wherever the two overlap; superpowers stays available for needs super-exec does not cover.**
+
+- **Overlap (super-exec wins, do not invoke the superpowers equivalent as the driver):** shape → `se-shape` (not `brainstorming`); plan → `se-plan` (not `writing-plans`); build → `se-exec` (not `executing-plans` / `subagent-driven-development`); verify → `se-verify` (not `verification-before-completion`); review → `se-review` (not `requesting-code-review` / `receiving-code-review`); worktree isolation → `se-exec` (not `using-git-worktrees`); finish / PR → `se-pr` (not `finishing-a-development-branch`); subagent dispatch → `se-subagent` (not `dispatching-parallel-agents`). TDD is treated as a *technique inside* `se-verify` / `se-exec`, not a competing driver.
+- **Gap (superpowers stays available, use it freely):** skills super-exec has no equivalent for — e.g. `systematic-debugging`, `find-skills`, `writing-skills`. The override never tells the model to ignore these.
+
+**Best-effort, not deterministic — and stated plainly as such.** super-exec does not require disabling superpowers and does not claim to fully neutralise its forceful bootstrap. The override wins by **specificity, not volume**: a clause that explicitly names superpowers and states the overlap mapping out-ranks a generic loud block, because a specific instruction about a named competitor beats generic urgency. Escalating the wrapper *name* (`EXTREMELY_IMPORTANT_PRO_MAX`, `_ULTRA`, …) is rejected — the tag name is a delimiter, not a priority dial; the model does not rank suffixes, so an invented superlative buys no authority and reads as noise. The clause therefore uses the same `<EXTREMELY_IMPORTANT>` register as superpowers (parity) and carries its weight in the content. The deterministic lever (a precedence line in the repo's `AGENTS.md`, which superpowers' own priority ladder obeys above its skills) is **out of scope** — the chosen posture is best-effort, no repo-file writes.
+
+**The override applies to the controller AND every dispatched subagent** ("make agents ignore superpowers" on overlap), so a finder / implementer / verifier / reviewer subagent does not drift into a superpowers skill for work the super-exec spine owns.
+
+**Two delivery layers:**
+
+1. **Always-present clause (baseline).** `using-super-exec` carries a `<EXTREMELY_IMPORTANT>`-wrapped precedence section, **conditionally worded** ("*if superpowers is also loaded*"). Because the SessionStart hook injects the full `using-super-exec` content, this clause is always in context; it is a no-op when superpowers is absent, so the self-contained / "assume only super-exec" posture is preserved.
+2. **Detection-gated emphasis (present-tense).** The SessionStart hook detects, best-effort, whether superpowers is installed (across supported harnesses) and — **only on a positive detection** — injects an additional present-tense precedence block ("superpowers IS loaded; override it on overlap per the mapping"). A definite present-tense statement reads stronger than the conditional baseline. Detection is best-effort and never blocks; a missed detection degrades to the always-present clause, so precedence still holds. **There is no user-facing output** — no greeting, no disable prompt; the emphasis is model-facing only.
+
+**Acceptance:**
+- With superpowers co-installed, a "let's build / fix / change X" prompt routes to `se-shape` (then the super-exec spine), not to `superpowers:brainstorming`.
+- A standalone debugging request (no super-exec spine work) still reaches `superpowers:systematic-debugging` — the override does not suppress gap skills.
+- With superpowers absent, behavior is unchanged and no superpowers-related text is surfaced to the user.
+- The SessionStart hook's superpowers-detection branch is covered by a test (present and absent cases).
+
+This decision is recorded in ADR 0004.
 
 ## Portability
 
@@ -225,10 +251,14 @@ Authored and dogfooded on Claude Code. Skills are written in **Claude Code langu
 - **Implementation limitation** — a divergence where the spec as written is genuinely not achievable (a real constraint, not a code bug). Triggers the workaround → ask-or-amend tree (see Divergence & spec authority).
 - **Closest-achievable amendment** — an Auto-PR-mode, agent-authored spec change to the nearest behavior that *is* achievable, annotated with the limitation in the spec's Decisions section; WHAT-only, committed `docs:`, reviewed in the PR.
 - **Spec authority** — the principle that the spec is the contract: implementation must match it, divergence is a bug by default, and the spec is amended only by a human decision or an Auto-PR-mode closest-achievable amendment.
+- **Skill precedence** — super-exec's best-effort claim to the workflow-driver role when the superpowers plugin is co-installed: super-exec wins where the two overlap; superpowers stays available for gaps (see Coexistence with superpowers).
+- **Overlap bucket** — workflow needs both plugins cover; super-exec's spine skill is the driver and the superpowers equivalent is not invoked as driver (shape/plan/build/verify/review/worktree/PR/dispatch).
+- **Gap bucket** — needs super-exec has no equivalent for (e.g. systematic-debugging, find-skills, writing-skills); superpowers stays available and is used freely.
+- **Best-effort override** — precedence asserted by specific, named clause content (not by tag-name escalation or by disabling superpowers); a missed detection degrades to the always-present conditional clause.
 
 ## Decisions
 
-See `docs/adr/` for: repo-skill delegation precedence (0001); local-only plans / spec-plan visibility boundary (0002); skills-only entrypoints, no thin commands (0003).
+See `docs/adr/` for: repo-skill delegation precedence (0001); local-only plans / spec-plan visibility boundary (0002); skills-only entrypoints, no thin commands (0003); superpowers co-install skill-precedence (0004).
 
 ## Fast-follow (post-v1)
 
