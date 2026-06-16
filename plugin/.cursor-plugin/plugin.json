@@ -1,0 +1,20 @@
+{
+  "name": "super-exec",
+  "displayName": "super-exec",
+  "description": "Gate-driven workflow plugin: spec, plan, execute, verify, review, and PR — enforcing discipline at every stage.",
+  "version": "0.0.1",
+  "author": {
+    "name": "Mek",
+    "email": "mek.weerakun@earnin.com"
+  },
+  "license": "MIT",
+  "keywords": [
+    "workflow",
+    "spec",
+    "plan",
+    "execute",
+    "review"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks-cursor.json"
+}

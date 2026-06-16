@@ -1,0 +1,20 @@
+{
+  "name": "super-exec-dev",
+  "description": "Marketplace root for super-exec: a gate-driven spec → plan → execute → verify → review → PR workflow plugin for Claude Code.",
+  "owner": {
+    "name": "Mek",
+    "email": "mek.weerakun@earnin.com"
+  },
+  "plugins": [
+    {
+      "name": "super-exec",
+      "description": "Gate-driven workflow plugin: spec, plan, execute, verify, review, and PR — enforcing discipline at every stage.",
+      "version": "0.0.1",
+      "source": "./plugin",
+      "author": {
+        "name": "Mek",
+        "email": "mek.weerakun@earnin.com"
+      }
+    }
+  ]
+}
