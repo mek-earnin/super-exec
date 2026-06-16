@@ -1,6 +1,6 @@
 ---
 name: se-plan
-description: Use when a spec is committed and you need to design the architecture, bind repo skills to tasks, design verification, and produce a plan.md — or to re-plan an existing spec without re-shaping.
+description: Use this when a spec is agreed and it's time to decide HOW — architecture, file structure, verification, and which existing repo skills to reuse — before writing any code. Triggers on "plan this", "design the implementation", "how should we build it", or moving from a spec toward code. Produces a reviewed plan.md. The second step of the super-exec workflow; invoke after se-shape, or to re-plan an existing spec without re-shaping.
 ---
 
 # se-plan — Plan Phase

@@ -1,6 +1,6 @@
 ---
 name: se-shape
-description: Use when starting or updating a feature spec — drives the Shape phase of the super-exec workflow, producing a committed spec document through a relentless WHAT-only interview.
+description: Use this BEFORE any feature work — creating a feature, building a component, adding functionality, or changing/modifying behavior — to reach a shared spec (the WHAT) through a focused interview before any planning or code. Triggers on "let's build/add/create X", "I want a feature that…", "change how Y works", "can we make it do Z". The entry point of the super-exec spec→plan→build workflow; invoke it whenever the user describes something to build or change, even if they never say "spec".
 ---
 
 # se-shape — Shape Phase

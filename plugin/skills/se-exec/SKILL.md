@@ -1,6 +1,6 @@
 ---
 name: se-exec
-description: Use when you have a super-exec plan ready and need to execute the full build session — locates the plan, presents session toggles, drives the outer-review/inner-verify loop, delegates all heavy work to sibling skills and subagents, and hands off to se-pr when the branch is clean.
+description: Use this when a reviewed plan exists and it's time to BUILD — executes the plan task by task with verification and code review running in subagents, then opens a PR. Triggers on "implement the plan", "start building", "execute", "build it", or starting a fresh session after planning. The third step of the super-exec workflow; it keeps the controller lean, never claims done without evidence, and hands off to se-pr when the branch is review-clean.
 ---
 
 # se-exec — Build Session Orchestrator

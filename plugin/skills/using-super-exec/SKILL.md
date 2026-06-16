@@ -7,6 +7,8 @@ description: Use when starting any new feature, fix, or task — super-exec orie
 
 super-exec is a gate-driven `spec → plan → execute → verify → review → PR` workflow plugin for Claude Code. It enforces discipline at every stage so sessions produce shippable work, not half-finished attempts.
 
+**Reach for these proactively.** When the user starts feature work — "let's build X", "add Y", "change how Z works" — invoke `se-shape` rather than diving into code; when a spec is ready, `se-plan`; when a plan is ready, `se-exec`. You don't need the user to name the skill. Match the work to the stage and use it. (Trivial one-line fixes don't need the full workflow — judge when it fits.)
+
 ## The three entrypoint skills
 
 super-exec ships as **skills only** — no separate slash commands. Each entrypoint is a skill you
