@@ -1,4 +1,4 @@
-# super-exec
+# Core workflow
 
 > Status: draft · Scope: shared (cross-repo) · Harnesses: Claude Code (primary), Cursor
 
@@ -34,13 +34,13 @@ Two sessions, one hard boundary at plan → execute.
 1. **Branch/ticket gate** (runs only here). Inspect the current branch. If it is a feature branch matching the work, continue. Otherwise offer to create one: ask for the ticket, pull ticket info via the Atlassian MCP (fallback: ask the user to enable it, or supply a branch name). Branch convention precedence: **repo skill (e.g. `git-new-branch`) → detected repo pattern → default `<ticket-id>-<≤6-word-slug>` lowercase**. Always `git fetch --all --prune` first and branch off `origin/develop` (auto-detect develop vs main); create with no tracked upstream (`git checkout -b <name> origin/develop^0`).
 2. **Shape (spec).** Interview the user relentlessly to reach shared understanding of the WHAT. Research the codebase via subagents instead of asking what can be discovered. Detect new-vs-update: glob `docs/specs[/<app>]`, match by ticket key + name, confirm with the user; an update interviews only the delta. Write/update the spec, sharpen terminology, update `CONTEXT.md` if it exists, offer an ADR only when the decision is hard to reverse + surprising + a real trade-off. **Human-review gate:** recommend the user commit the spec (and any ADR/CONTEXT change), type `docs`.
 3. **Plan (architecture + verification).** Read the spec. Design the architecture, researching via subagents. Discover the full repo skill catalog and bind matching skills to tasks (see Repo skill catalog & task binding). **Resolve every risk and open question with the user up front** (grill like shape, but for HOW) — the plan carries no open items into execution. Design verification (see below) and reach agreement. If the feature involves UI work, ask about incorporating impeccable (default yes — see Optional: UI design). Write the plan. **Human-review gate:** the user reviews architecture + data flow.
-4. End: instruct the user to start a fresh session and run `/se-execute`.
+4. End: instruct the user to start a fresh session and run `/se-exec`.
 
 `/se-plan` is a re-entry point: re-plan or update an existing spec's plan without re-interviewing the spec.
 
 ### Session 2 — build
 
-**`/se-execute`** drives the whole session:
+**`/se-exec`** drives the whole session:
 
 1. Locate the relevant plan (match branch/ticket → feature → most recent plan dir; confirm). Read the plan; read the spec for acceptance.
 2. **Present the two toggles once:**
@@ -53,17 +53,18 @@ Two sessions, one hard boundary at plan → execute.
 4. **Optional final human review** (auto-commit is paused while it is open).
 5. **PR:** if auto-PR is on, create it; otherwise present the PR draft and wait for approval. Creation delegates to the repo `create-pr` skill (which chains version bump, draft-first creation, evidence capture, and `pull_request_template.md`). Fallback when no repo skill exists: strictly follow `pull_request_template.md` (N primary sections → N primary sections, no extra; sub-sections and detail allowed), draft mode, evidence for UI changes when available.
 
-**Resume:** the controller monitors its own context. At a threshold it auto-writes `handoff.md` (via the repo `handoff` skill) and pauses; the user runs `/clear` and re-runs `/se-execute`, which detects the in-progress plan + handoff and resumes from the next unstarted task.
+**Resume:** the controller monitors its own context. At a threshold it auto-writes `handoff.md` (via super-exec's own `se-handoff` skill, into `.super-exec/`) and pauses; the user runs `/clear` and re-runs `/se-exec`, which detects the in-progress plan + handoff and resumes from the next unstarted task.
 
 ## Verification design
 
 - **Baseline (always runs):** detected per repo from package scripts / `AGENTS.md` / a repo skill. Examples: frontend → `lint:fix` + `type-check`; `svc-ccc-backend` → `dotnet build` passes.
 - **Task-specific (adaptive, agreed in the plan):** if a test suite already covers the touched area → write tests first (TDD) for new code; if no tests exist there → do **not** scaffold unit tests — use browser-real verification (playwright via the repo dev-server skill), endpoint calls, or a custom script. UI changes require a real-browser check with evidence.
-- The verifier subagent runs baseline + task-specific and must **show evidence** (test output, screenshots) before any "done" claim. Verifier and reviewer subagents use a strong, non-fast model; implementer/fixer subagents inherit the session model.
+- Verification runs as a **runner/judge split**: a cheap runner subagent executes baseline + task-specific verification in its own throwaway context and reports evidence; a strong, non-fast judge (the verifier/reviewer) evaluates that evidence against the spec + plan. No verification runs inline in the controller, and no "done" claim is made without shown evidence (test output, screenshots).
+- **Subagent model tiers are assigned by role, per harness** (the plan records the concrete table). Claude Code: strong/non-fast (Opus) for shape, plan, review, and verifier judgment; mid (Sonnet) for implementers/fixers; cheap (Haiku) for script-runners and finders. Cursor: default/inherit (non-fast) for the strong roles; latest composer non-fast (e.g. composer-2.5) for implementers, mid tasks, runners, and finders.
 
 ## Optional: UI design via impeccable
 
-`se-shape`/`se-plan` first classifies whether the feature involves UI work (a frontend app, or the change touches components/styles). **If there is no UI work, it never asks.** If there is UI work, it asks once whether to incorporate the `impeccable` skill — **default YES**. The answer is persisted in the plan and honored across three touchpoints; `se-execute` re-asks only if a UI plan never recorded it.
+`se-shape`/`se-plan` first classifies whether the feature involves UI work (a frontend app, or the change touches components/styles). **If there is no UI work, it never asks.** If there is UI work, it asks once whether to incorporate the `impeccable` skill — **default YES**. The answer is persisted in the plan and honored across three touchpoints; `se-exec` re-asks only if a UI plan never recorded it.
 
 - **Plan** — use impeccable `shape` to establish design direction and identify the states the design system doesn't cover (empty, loading, error, edge cases). Captured as design *intent* + planned tasks. No code — the plan rule holds.
 - **Execute** — implementer subagents building UI tasks invoke `/impeccable craft` to build to production standard (design-system reuse, contrast/a11y, motion, responsive), rather than hand-rolling UI.
@@ -81,7 +82,7 @@ Two sessions, one hard boundary at plan → execute.
 6. **No auto-commit during human review; no PR reply without an approved draft.**
 7. **Realism filter on review findings.** Never flag impossible cases (e.g. a negative index into an internally-controlled array the user cannot influence).
 
-Enforcement layers: strong directive language + red-flag tables + flowcharts in skill bodies; a mandatory TodoWrite checklist per phase; and selective Claude Code `PreToolUse` hooks active only during a super-exec session (marker `.super-exec/active`) — **nudge** (non-blocking) on heavy build/test run in the controller and on raw git/gh commands; **block** (hard) on commit while a human-review gate is open and on PR-comment replies without an approved draft. Cursor gets prose-only enforcement.
+Enforcement layers: strong directive language + red-flag tables + flowcharts in skill bodies; a mandatory TodoWrite checklist per phase; and selective Claude Code `PreToolUse` hooks active only during a super-exec session (marker `.super-exec/active`) — **nudge** (non-blocking) on heavy build/test run in the controller and on raw git/gh commands; **block** (hard) on commit while a human-review gate is open and on PR-comment replies without an approved draft. Cursor enforces hard blocks natively where its hook API supports `deny` (commit-while-gate-open, via `beforeShellExecution` + `failClosed`); the nudges degrade to prose on Cursor — its pre-execution hooks expose no allow-path context injection and no controller-vs-subagent signal.
 
 ## Artifacts & locations
 
@@ -93,7 +94,7 @@ Enforcement layers: strong directive language + red-flag tables + flowcharts in 
 | Plan(s) | `.super-exec/<feature>/<YYYY-MM-DD>-<plan-name>/plan.md` | **no (gitignored)** | local |
 | Handoff / scratch | `.super-exec/<feature>/<…>/{handoff.md,scratch/}` | no | local |
 
-One long-lived spec per feature; many dated plans per feature (≈ one plan ≈ one execute session ≈ one PR). **The spec never references the plan** (plans are local; teammates have only specs). The tool adds `.super-exec/` (and `research/`) to `.gitignore`.
+One long-lived spec per feature; many dated plans per feature (≈ one plan ≈ one execute session ≈ one PR). **The spec never references the plan** (plans are local; teammates have only specs). `<feature>` is the work's feature name — the same slug as the branch (a ≤6-word summary of the change), lowercase-kebab; it is **never** the repo/project/package name, and the tool halts to confirm with the user if a candidate slug collides with the project name. The tool adds `.super-exec/` (and `research/`) to `.gitignore`.
 
 ### Spec template
 
@@ -133,7 +134,7 @@ No change-files manifest, no copy-paste-ready code, no output mockups. Risks/ope
 | PR | `create-pr` (+ `pr-evidence-create`, `pr-upload-attachment`, `version-plan`) |
 | UI verify / dev server | `local-dev-server` + playwright |
 | spec interview | repo `grill-with-docs` if present, else bundled |
-| handoff | `handoff` |
+| handoff | bundled `se-handoff` (super-exec's own; writes to `.super-exec/`) |
 
 ### Repo skill catalog & task binding
 
@@ -158,21 +159,23 @@ super-exec/
 ├── .claude-plugin/marketplace.json   # source: ./plugin
 ├── plugin/                           # the installed plugin
 │   ├── .claude-plugin/plugin.json
-│   ├── skills/  se-{shape,plan,execute,verify,review}/ + helpers (se-branch-gate, se-pr)
-│   ├── commands/                     # /se-shape, /se-plan, /se-execute
+│   ├── skills/  se-{shape,plan,exec,verify,review}/ + helpers (se-branch-gate, se-pr, se-handoff)
+│   ├── commands/                     # /se-shape, /se-plan, /se-exec
 │   ├── hooks/                        # PreToolUse guards + SessionStart marker
 │   ├── .cursor-plugin/               # Cursor config
 │   └── references/tool-map.md        # CC↔Cursor tool-name mapping
-├── docs/specs/super-exec.md          # this spec (dogfood)
+├── docs/specs/core-workflow.md       # this spec (dogfood)
 ├── research/                         # gitignored, local-only
 └── README.md
 ```
 
 Install per repo: `/plugin marketplace add <git-url>` then `/plugin install super-exec`.
 
+super-exec is **self-contained**: it bundles its own workflow discipline (taking only useful inspiration from existing skills like superpowers where relevant, never depending on them) and assumes a teammate has installed **only super-exec**. It has no runtime dependency on superpowers or any non-bundled skill; the sole optional external is `impeccable`, which degrades gracefully. Repo-skill delegation is detection-based (ADR 0001), not a hard dependency.
+
 ## Portability
 
-Authored and dogfooded on Claude Code; skill bodies use harness-neutral prose ("spawn a subagent and report a summary", "use a strong non-fast model") and never hardcode CC-only orchestration primitives, so Cursor runs the same skills via its own subagent mechanism (e.g. composer-2.5 non-fast). A tool-name mapping reference and a `.cursor-plugin` config ship with the plugin. CC-only conveniences (hooks) degrade to prose on Cursor.
+Authored and dogfooded on Claude Code; skill bodies use harness-neutral prose ("spawn a subagent and report a summary", "use a strong non-fast model") and never hardcode CC-only orchestration primitives, so Cursor runs the same skills via its own subagent mechanism (e.g. composer-2.5 non-fast). A tool-name mapping reference and a `.cursor-plugin` config ship with the plugin. CC-only *nudge* hooks degrade to prose on Cursor; hard *blocks* run natively via Cursor's `beforeShellExecution` (`deny` + `failClosed`).
 
 ## Domain terms
 
