@@ -412,18 +412,33 @@ fi
 echo ""
 echo "Check 5: Self-containment grep"
 
-# Search for ANY 'superpowers' reference (case-insensitive) in plugin/.
-# The plugin must be fully self-contained: zero superpowers references of any
-# kind (skill invocation, comment, or URL). 'impeccable' is the only allowed
-# external. No exemptions — a hit means a self-containment leak to remove.
+# super-exec stays self-contained, with ONE allowlisted exception: the
+# using-super-exec precedence clause names 'superpowers' on purpose — that is
+# the single skill-precedence site (ADR 0004). 'superpowers' in ANY OTHER file
+# under plugin/ is a self-containment leak to remove ('impeccable' remains the
+# only other allowed external). The allowlist is exactly one file:
+ALLOWED_SUPERPOWERS_FILE="plugin/skills/using-super-exec/SKILL.md"
+
+# Hits in plugin/ EXCLUDING the one allowlisted file. Any remaining hit fails.
+# (Negative self-test: a planted 'superpowers' reference in any other plugin/
+# file lands here and fails the check.)
 superpowers_hits=$(grep -rin 'superpowers' "${REPO_ROOT}/plugin/" 2>/dev/null \
+  | grep -v "/${ALLOWED_SUPERPOWERS_FILE}:" \
   | head -20 || true)
 
 if [ -z "$superpowers_hits" ]; then
-  pass "no 'superpowers' references in plugin/"
+  pass "no 'superpowers' references in plugin/ outside ${ALLOWED_SUPERPOWERS_FILE}"
 else
-  fail "found 'superpowers' skill references in plugin/ (only 'impeccable' external ref is allowed):"
+  fail "found 'superpowers' references in plugin/ outside the allowlist (${ALLOWED_SUPERPOWERS_FILE}):"
   echo "$superpowers_hits" | sed 's/^/    /'
+fi
+
+# Allowlist anchor: the precedence clause SHOULD reference superpowers. If it no
+# longer does, the allowlist is stale (clause moved/removed) — flag it.
+if grep -qin 'superpowers' "${REPO_ROOT}/${ALLOWED_SUPERPOWERS_FILE}" 2>/dev/null; then
+  pass "allowlist anchor present: ${ALLOWED_SUPERPOWERS_FILE} references superpowers"
+else
+  fail "allowlist anchor missing: ${ALLOWED_SUPERPOWERS_FILE} no longer references superpowers (stale allowlist?)"
 fi
 
 # ---------------------------------------------------------------------------

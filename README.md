@@ -32,6 +32,12 @@ super-exec is **self-contained**. These make it nicer when present and are skipp
 
 If neither is installed, super-exec runs the full workflow anyway and tells you what it skipped.
 
+### If superpowers is also installed
+
+super-exec and superpowers overlap — both try to drive feature work. Where they overlap (shape / plan / build / verify / review / PR), super-exec asserts best-effort precedence: its workflow drives those steps, and superpowers stays available for what super-exec doesn't cover (e.g. debugging). No setup is needed for this to work.
+
+**Optional:** To remove the overlap entirely, you can disable superpowers in projects where you use super-exec via `/plugin` or per-project settings. This is only a recommendation — super-exec works fine with superpowers left enabled. See ADR 0004 for the full coexistence rationale.
+
 ---
 
 ## The workflow, from your side
