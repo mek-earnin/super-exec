@@ -1,0 +1,5 @@
+# super-exec local working dirs (plans, handoff, scratch) — never committed
+.super-exec/
+
+# research mined from past conversations — local-only, may contain internal data
+research/
