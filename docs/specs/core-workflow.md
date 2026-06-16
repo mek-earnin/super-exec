@@ -218,16 +218,13 @@ super-exec and the `superpowers` plugin both ship an always-injected bootstrap t
 
 **The override applies to the controller AND every dispatched subagent** ("make agents ignore superpowers" on overlap), so a finder / implementer / verifier / reviewer subagent does not drift into a superpowers skill for work the super-exec spine owns.
 
-**Two delivery layers:**
-
-1. **Always-present clause (baseline).** `using-super-exec` carries a `<EXTREMELY_IMPORTANT>`-wrapped precedence section, **conditionally worded** ("*if superpowers is also loaded*"). Because the SessionStart hook injects the full `using-super-exec` content, this clause is always in context; it is a no-op when superpowers is absent, so the self-contained / "assume only super-exec" posture is preserved.
-2. **Detection-gated emphasis (present-tense).** The SessionStart hook detects, best-effort, whether superpowers is installed (across supported harnesses) and — **only on a positive detection** — injects an additional present-tense precedence block ("superpowers IS loaded; override it on overlap per the mapping"). A definite present-tense statement reads stronger than the conditional baseline. Detection is best-effort and never blocks; a missed detection degrades to the always-present clause, so precedence still holds. **There is no user-facing output** — no greeting, no disable prompt; the emphasis is model-facing only.
+**Delivery (single layer).** `using-super-exec` carries a `<EXTREMELY_IMPORTANT>`-wrapped precedence section, **conditionally worded** ("*if superpowers is also loaded*"). Because the SessionStart hook already injects the full `using-super-exec` content, this clause is always in context; it is a no-op when superpowers is absent, so the self-contained / "assume only super-exec" posture is preserved. **There is no detection step and no user-facing output** — no greeting, no disable prompt, no SessionStart probe for superpowers; the clause is model-facing only and the model applies it when it observes superpowers' skills in context. (A detection-gated present-tense emphasis in the SessionStart hook was considered and cut — see ADR 0004 — as not worth the added hook code, cross-harness fragility, and test surface for a marginal salience gain over the always-present clause.)
 
 **Acceptance:**
 - With superpowers co-installed, a "let's build / fix / change X" prompt routes to `se-shape` (then the super-exec spine), not to `superpowers:brainstorming`.
 - A standalone debugging request (no super-exec spine work) still reaches `superpowers:systematic-debugging` — the override does not suppress gap skills.
-- With superpowers absent, behavior is unchanged and no superpowers-related text is surfaced to the user.
-- The SessionStart hook's superpowers-detection branch is covered by a test (present and absent cases).
+- With superpowers absent, behavior is unchanged: the clause is a no-op and nothing superpowers-related is surfaced.
+- `superpowers` appears under `plugin/` only in `using-super-exec` — enforced by the self-containment test's allowlist.
 
 This decision is recorded in ADR 0004.
 
@@ -254,7 +251,7 @@ Authored and dogfooded on Claude Code. Skills are written in **Claude Code langu
 - **Skill precedence** — super-exec's best-effort claim to the workflow-driver role when the superpowers plugin is co-installed: super-exec wins where the two overlap; superpowers stays available for gaps (see Coexistence with superpowers).
 - **Overlap bucket** — workflow needs both plugins cover; super-exec's spine skill is the driver and the superpowers equivalent is not invoked as driver (shape/plan/build/verify/review/worktree/PR/dispatch).
 - **Gap bucket** — needs super-exec has no equivalent for (e.g. systematic-debugging, find-skills, writing-skills); superpowers stays available and is used freely.
-- **Best-effort override** — precedence asserted by specific, named clause content (not by tag-name escalation or by disabling superpowers); a missed detection degrades to the always-present conditional clause.
+- **Best-effort override** — precedence asserted by specific, named clause content (not by tag-name escalation, detection, or by disabling superpowers); the clause is always present and conditionally worded, a no-op when superpowers is absent. The README additionally recommends (soft, non-enforced) disabling superpowers in projects that use super-exec.
 
 ## Decisions
 
