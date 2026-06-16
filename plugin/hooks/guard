@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+# PreToolUse guard for super-exec plugin.
+#
+# Pure function: reads a JSON payload on stdin, emits a JSON decision on stdout.
+# Fully unit-testable by piping fixture files through this script.
+#
+# =============================================================================
+# DECISION PRECEDENCE
+# =============================================================================
+#
+# 1. NO MARKERS (no active, no gate-open) → ALLOW SILENTLY.
+#    Plugin is inert outside a super-exec session.
+#
+# 2. B1 — HARD BLOCK (context-agnostic):
+#    gateOpen AND isCommit → DENY.
+#    Applies regardless of agent_id and regardless of whether active exists.
+#    CC:     {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+#              "permissionDecision": "deny", "permissionDecisionReason": "<why>"}}
+#    Cursor: {"permission": "deny", "userMessage": "<why>",
+#              "agentMessage": "<why>", "failClosed": true}
+#
+# 3. CC NUDGES (only when active AND NOT isSubagent AND NOT blocked above):
+#    N2 — isGitMutate → allow + additionalContext nudge (use repo git/PR skill).
+#    N1 — isBuildTest → allow + additionalContext nudge (delegate to subagent).
+#    N2 takes precedence over N1 (disjoint in practice but N2 checked first).
+#    On Cursor: N1/N2 degrade to plain allow (no context injection available).
+#
+# 4. isSubagent (CC, agent_id present) → never N1/N2; still subject to B1.
+#
+# 5. Anything else with active → ALLOW SILENTLY.
+#
+# ROBUSTNESS: malformed/empty stdin → allow silently. Any internal parse
+# error defaults to allow (fail-OPEN for nudges; B1 Cursor uses failClosed
+# in its OUTPUT only, not as an internal crash policy).
+# =============================================================================
+
+set -uo pipefail
+
+# ---------------------------------------------------------------------------
+# Harness detection
+# ---------------------------------------------------------------------------
+if [ -n "${CURSOR_PROJECT_DIR:-}" ] || [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
+  HARNESS="cursor"
+else
+  HARNESS="cc"
+fi
+
+# ---------------------------------------------------------------------------
+# Parse stdin JSON via node
+# ---------------------------------------------------------------------------
+# Read stdin fully first — safe even if stdin is empty or malformed.
+payload=$(cat 2>/dev/null || true)
+
+if [ -z "$payload" ]; then
+  exit 0
+fi
+
+# Extract fields via node. Outputs tab-separated:
+#   <command>\t<agentId>\t<cwd>
+parsed=$(printf '%s' "$payload" | node -e "
+  let raw = '';
+  process.stdin.on('data', d => raw += d);
+  process.stdin.on('end', () => {
+    try {
+      const p = JSON.parse(raw);
+      // command: CC uses tool_input.command; Cursor uses .command or .tool_input.command
+      const cmd = (p.tool_input && p.tool_input.command) || p.command || '';
+      // agent_id: CC only; presence (non-empty) means subagent
+      const agentId = p.agent_id || '';
+      // cwd: prefer payload cwd, then env vars handled in bash
+      const cwd = p.cwd || '';
+      // Use a delimiter unlikely to appear in a command string
+      process.stdout.write(cmd + '\x01' + agentId + '\x01' + cwd);
+    } catch(e) {
+      process.stdout.write('\x01\x01');
+    }
+  });
+" 2>/dev/null || printf '\x01\x01')
+
+# Split on the delimiter (SOH character, \x01)
+command_str=$(printf '%s' "$parsed" | cut -d$'\x01' -f1)
+agent_id=$(printf '%s' "$parsed" | cut -d$'\x01' -f2)
+payload_cwd=$(printf '%s' "$parsed" | cut -d$'\x01' -f3)
+
+# ---------------------------------------------------------------------------
+# Determine project directory
+# ---------------------------------------------------------------------------
+if [ -n "$payload_cwd" ]; then
+  PROJECT_DIR="$payload_cwd"
+elif [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+  PROJECT_DIR="${CLAUDE_PROJECT_DIR}"
+elif [ -n "${CURSOR_PROJECT_DIR:-}" ]; then
+  PROJECT_DIR="${CURSOR_PROJECT_DIR}"
+else
+  PROJECT_DIR="${PWD}"
+fi
+
+# ---------------------------------------------------------------------------
+# Read markers (existence checks only — no writes)
+# ---------------------------------------------------------------------------
+active=false
+gate_open=false
+
+if [ -f "${PROJECT_DIR}/.super-exec/active" ]; then
+  active=true
+fi
+if [ -f "${PROJECT_DIR}/.super-exec/gate-open" ]; then
+  gate_open=true
+fi
+
+# ---------------------------------------------------------------------------
+# Short-circuit: no markers at all → allow silently (plugin inert)
+# ---------------------------------------------------------------------------
+if [ "$active" = false ] && [ "$gate_open" = false ]; then
+  exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# Command classification
+# ---------------------------------------------------------------------------
+
+# isCommit: matches "git commit" as a command (not "git checkout", etc.)
+# Pattern: git followed by optional flags then "commit" as a word.
+isCommit=false
+if printf '%s' "$command_str" | grep -qE '(^|[[:space:]])git[[:space:]]+commit\b'; then
+  isCommit=true
+fi
+
+# isGitMutate: git commit, git push, or "gh pr" followed by a mutating subcommand.
+# Read ops excluded: git status, git log, git diff, git fetch, git checkout,
+# gh pr view, gh pr list, gh pr status, gh pr checks, gh pr diff.
+isGitMutate=false
+if [ "$isCommit" = true ]; then
+  isGitMutate=true
+elif printf '%s' "$command_str" | grep -qE '(^|[[:space:]])git[[:space:]]+push\b'; then
+  isGitMutate=true
+elif printf '%s' "$command_str" | grep -qE '(^|[[:space:]])gh[[:space:]]+pr[[:space:]]+(create|edit|merge|comment|review|close|reopen|ready|draft|label|lock|unlock)\b'; then
+  isGitMutate=true
+fi
+
+# isBuildTest: npm test/build, jest, vitest, playwright, dotnet build,
+# or repo-wide lint/grep/find invocations.
+isBuildTest=false
+if printf '%s' "$command_str" | grep -qE '(^|[[:space:]])(npm[[:space:]]+(test|run[[:space:]]+(test|build))|jest|vitest|playwright|dotnet[[:space:]]+build|(lint|grep|find)[[:space:]])'; then
+  isBuildTest=true
+fi
+
+# isSubagent (CC only): agent_id present and non-empty
+isSubagent=false
+if [ "$HARNESS" = "cc" ] && [ -n "$agent_id" ]; then
+  isSubagent=true
+fi
+
+# ---------------------------------------------------------------------------
+# B1 DENY messages
+# ---------------------------------------------------------------------------
+b1_reason="A human-review gate is open (.super-exec/gate-open exists). Commits are blocked until the gate resolves. Complete the pending review step, then the gate will be cleared automatically."
+
+# ---------------------------------------------------------------------------
+# DECISION
+# ---------------------------------------------------------------------------
+
+# B1: gate-open AND isCommit → hard block (context-agnostic)
+if [ "$gate_open" = true ] && [ "$isCommit" = true ]; then
+  if [ "$HARNESS" = "cursor" ]; then
+    printf '{"permission":"deny","userMessage":"%s","agentMessage":"%s","failClosed":true}\n' \
+      "$b1_reason" "$b1_reason"
+  else
+    # Claude Code
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' \
+      "$b1_reason"
+  fi
+  exit 0
+fi
+
+# Beyond this point: active must be true for any further action
+# (gate-open without commit already handled above or will fall through to allow)
+if [ "$active" = false ]; then
+  exit 0
+fi
+
+# CC nudges: only when active AND NOT isSubagent AND NOT blocked
+if [ "$HARNESS" = "cc" ] && [ "$isSubagent" = false ]; then
+
+  if [ "$isGitMutate" = true ]; then
+    # N2: git/PR mutate → nudge to use repo skill via subagent
+    n2_nudge="[super-exec N2] You are in a super-exec session. Instead of running raw git/gh commands directly, delegate to the repo's git/PR skill via a subagent (e.g. the repo's \`git-commit-message\` or \`create-pr\` skill). This keeps the controller lean and ensures repo conventions are followed. Spawn a subagent to handle this git operation."
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","additionalContext":"%s"}}\n' \
+      "$n2_nudge"
+    exit 0
+  fi
+
+  if [ "$isBuildTest" = true ]; then
+    # N1: build/test → nudge to delegate to subagent
+    n1_nudge="[super-exec N1] You are in a super-exec session. Heavy build/test commands should be delegated to a throwaway subagent to keep the controller context lean. Spawn a subagent to run this build/test command and report a summary back."
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","additionalContext":"%s"}}\n' \
+      "$n1_nudge"
+    exit 0
+  fi
+
+fi
+
+# Cursor: N1/N2 degrade to plain allow (no context injection on allow path)
+# Everything else with active → allow silently
+exit 0

@@ -1,0 +1,150 @@
+#!/usr/bin/env bash
+# SessionStart hook for super-exec plugin
+#
+# =============================================================================
+# MARKER LIFECYCLE
+# =============================================================================
+#
+# Markers live under .super-exec/ in the TARGET repo (the repo where super-exec
+# is installed and where the /se-* skills run). That directory is gitignored.
+#
+# MARKER             WRITTEN BY                       CLEARED BY
+# ─────────────────────────────────────────────────────────────────────────────
+# .super-exec/active   A /se-* driver skill on its       se-pr on PR completion;
+#                      session-activation step            OR stale-TTL sweep on
+#                      (se-shape, se-plan, se-exec).      session-start (see below).
+#
+# .super-exec/gate-open  se-exec (review-before-commit    The writing step once the
+#                        toggle) and se-pr (final review). gate resolves (human
+#                                                          approves the review).
+#
+# GUARD BEHAVIOUR (plugin/hooks/guard):
+#   - Inert when .super-exec/active is absent, EXCEPT B1 (below).
+#   - B1 (hard block): gate-open + git commit → DENY, context-agnostic
+#     (ignores agent_id, ignores active). In practice gate-open only appears
+#     inside an active session, so this is belt-and-suspenders.
+#   - N2 (nudge): active + controller + git mutate → allow + context nudge to
+#     use the repo's git/PR skill via a subagent.
+#   - N1 (nudge): active + controller + build/test → allow + context nudge to
+#     delegate heavy work to a subagent.
+#   - Subagents (agent_id present in CC payload) never receive N1/N2.
+#   - On Cursor: N1/N2 degrade to prose (no nudge emitted); B1 runs natively.
+#
+# STALE-TTL (NO FIXED NUMERIC VALUE):
+#   Clearing a stale .super-exec/active is a MODEL-JUDGED heuristic. The
+#   session-start hook surfaces the marker's mtime and any in-progress plan
+#   context to the model via the orientation injection below. The model reads
+#   that context and decides whether the session is genuinely stale. The hook
+#   NEVER auto-deletes the marker and NEVER uses a hardcoded numeric TTL.
+#   This avoids false positives (a dev resumes after a long weekend) while
+#   still letting the model surface "this looks stale — should I clear it?"
+#   to the user.
+#
+# RESUME DETECT (this hook):
+#   Read-only. Appended to orientation context only. No writes, ever.
+# =============================================================================
+
+set -euo pipefail
+
+# Determine plugin root directory
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Determine the target project directory from the environment.
+# Priority: CLAUDE_PROJECT_DIR (Claude Code) → CURSOR_PROJECT_DIR (Cursor) → PWD.
+if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+  PROJECT_DIR="${CLAUDE_PROJECT_DIR}"
+elif [ -n "${CURSOR_PROJECT_DIR:-}" ]; then
+  PROJECT_DIR="${CURSOR_PROJECT_DIR}"
+else
+  PROJECT_DIR="${PWD}"
+fi
+
+SUPER_EXEC_DIR="${PROJECT_DIR}/.super-exec"
+
+# Read using-super-exec orientation content
+using_super_exec_content=$(cat "${PLUGIN_ROOT}/skills/using-super-exec/SKILL.md" 2>&1 || echo "Error reading using-super-exec skill")
+
+# Escape string for JSON embedding using bash parameter substitution.
+# Each ${s//old/new} is a single C-level pass - orders of magnitude
+# faster than the character-by-character loop this replaces.
+escape_for_json() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
+}
+
+using_super_exec_escaped=$(escape_for_json "$using_super_exec_content")
+
+# ---------------------------------------------------------------------------
+# RESUME DETECT (read-only — NO writes to markers)
+# ---------------------------------------------------------------------------
+# Check for an active super-exec session and any in-progress plan directory.
+# We surface the marker age and plan context so the model can judge whether
+# the session is stale (no fixed TTL — see STALE-TTL comment above).
+resume_note=""
+
+if [ -f "${SUPER_EXEC_DIR}/active" ]; then
+  # Get the marker's modification time for the model's staleness judgement.
+  active_mtime=""
+  if command -v stat >/dev/null 2>&1; then
+    # macOS stat uses -f; GNU stat uses -c. Try both, fail silently.
+    active_mtime=$(stat -f '%Sm' -t '%Y-%m-%d %H:%M:%S %Z' "${SUPER_EXEC_DIR}/active" 2>/dev/null \
+      || stat -c '%y' "${SUPER_EXEC_DIR}/active" 2>/dev/null \
+      || echo "unknown")
+  fi
+
+  # Look for any in-progress plan directory: .super-exec/<feature>/<plan-dir>/plan.md
+  plan_context=""
+  if [ -d "${SUPER_EXEC_DIR}" ]; then
+    # Find the most recently modified plan.md that is NOT at the root level
+    # (plans live at depth 3: .super-exec/<feature>/<plan-dir>/plan.md).
+    while IFS= read -r plan_file; do
+      feature_dir=$(dirname "$(dirname "$plan_file")")
+      feature=$(basename "$feature_dir")
+      plan_dir=$(dirname "$plan_file")
+      plan_name=$(basename "$plan_dir")
+      handoff_note=""
+      if [ -f "${plan_dir}/handoff.md" ]; then
+        handoff_note=" (handoff.md present — mid-session handoff detected)"
+      fi
+      plan_context="Feature: ${feature} / Plan dir: ${plan_name}${handoff_note}"
+      break  # Use the most recently modified one
+    done < <(find "${SUPER_EXEC_DIR}" -mindepth 3 -maxdepth 3 -name "plan.md" \
+               -exec ls -t1 {} + 2>/dev/null | head -1 | xargs -I{} dirname {} \
+               | xargs -I{} find {} -name "plan.md" 2>/dev/null || true)
+  fi
+
+  if [ -n "$plan_context" ]; then
+    resume_note="\n\n---\n**SUPER-EXEC SESSION IN PROGRESS**\n\nA super-exec session is active (marker age: ${active_mtime:-unknown}).\nIn-progress plan: ${plan_context}\n\nYou can resume this session with \`/se-exec\`. If this marker appears stale (the timestamp above is old relative to the current date), surface that to the user and ask whether to clear it — do NOT auto-delete the marker.\n---"
+  else
+    resume_note="\n\n---\n**SUPER-EXEC SESSION IN PROGRESS (no in-progress plan found)**\n\nA super-exec \`active\` marker exists (marker age: ${active_mtime:-unknown}) but no in-progress plan.md was found under \`.super-exec/\`. This may indicate the session never advanced past shape/plan, or the plan directory was cleaned up. If the marker looks stale, surface that to the user. Do NOT auto-delete the marker.\n---"
+  fi
+fi
+
+session_context="<super-exec>\nYou have the super-exec workflow plugin loaded.\n\n**Below is the full content of your 'super-exec:using-super-exec' skill — your orientation to the gate-driven workflow:**\n\n${using_super_exec_escaped}${resume_note}\n</super-exec>"
+
+# Output context injection as JSON.
+# Cursor hooks expect additional_context (snake_case).
+# Claude Code hooks expect hookSpecificOutput.additionalContext (nested).
+# Copilot CLI (v1.0.11+) and others expect additionalContext (top-level, SDK standard).
+# Claude Code reads BOTH additional_context and hookSpecificOutput without
+# deduplication, so we must emit only the field the current platform consumes.
+#
+# Uses printf instead of heredoc to work around a bash 5.3+ heredoc hang.
+if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
+  # Cursor sets CURSOR_PLUGIN_ROOT (may also set CLAUDE_PLUGIN_ROOT)
+  printf '{\n  "additional_context": "%s"\n}\n' "$session_context"
+elif [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -z "${COPILOT_CLI:-}" ]; then
+  # Claude Code sets CLAUDE_PLUGIN_ROOT without COPILOT_CLI
+  printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$session_context"
+else
+  # Copilot CLI (sets COPILOT_CLI=1) or unknown platform — SDK standard format
+  printf '{\n  "additionalContext": "%s"\n}\n' "$session_context"
+fi
+
+exit 0
