@@ -159,6 +159,25 @@ escape_for_json() {
 using_super_exec_escaped=$(escape_for_json "$using_super_exec_content")
 
 # ---------------------------------------------------------------------------
+# CURSOR TRANSLATION INJECTION (Cursor only)
+# ---------------------------------------------------------------------------
+# super-exec skills are authored in Claude Code language. The one-way CC->Cursor
+# translation lives in references/cursor-tools.md and is only SOFT-referenced
+# from the skills ("see cursor-tools.md"), so on Cursor the model frequently
+# never opens it — and then inherits the session model for every subagent
+# (cheap git/lint/finder work ends up on the strong/expensive model). To
+# GUARANTEE the translation is in context, inject the full file here when
+# running under Cursor. CURSOR_PLUGIN_ROOT is the Cursor signal (the same gate
+# the output branch below uses); on Claude Code this block is skipped because
+# CC consumes the aliases natively.
+cursor_translation_block=""
+if [ -n "${CURSOR_PLUGIN_ROOT:-}" ]; then
+  cursor_tools_content=$(cat "${PLUGIN_ROOT}/skills/using-super-exec/references/cursor-tools.md" 2>&1 || echo "Error reading cursor-tools.md")
+  cursor_tools_escaped=$(escape_for_json "$cursor_tools_content")
+  cursor_translation_block="\n\n<super-exec-cursor-translation>\n**You are running under Cursor.** super-exec skills are authored in Claude Code language; the full one-way CC->Cursor translation is injected below, so you do NOT need to open any file to apply it. Resolve EVERY CC primitive (tools, model tiers/aliases, AskUserQuestion, hook events, env vars) through it.\n\n**Subagent model rule (the common Cursor failure):** resolve each subagent's model through the **Model tiers** table below and set it EXPLICITLY on dispatch. NEVER omit it — omitting inherits the session model and silently defeats the tier system (cheap git/lint/finder work ends up on the strong model). Map by tier (cheap/mid -> the non-fast Composer model; strong -> the strongest high-effort reasoning model), then pick the matching slug from the dispatch tool's OWN allowlist. Do NOT hard-code a model name from memory — the allowlist is the source of truth and the slugs change often.\n\n${cursor_tools_escaped}\n</super-exec-cursor-translation>"
+fi
+
+# ---------------------------------------------------------------------------
 # RESUME DETECT (read-only — NO writes to markers)
 # ---------------------------------------------------------------------------
 # Check for an active super-exec session and any in-progress plan directory.
@@ -204,7 +223,7 @@ if [ -f "${SUPER_EXEC_DIR}/active" ]; then
   fi
 fi
 
-session_context="<super-exec>\nYou have the super-exec workflow plugin loaded.\n\n**Below is the full content of your 'super-exec:using-super-exec' skill — your orientation to the workflow:**\n\n${using_super_exec_escaped}${resume_note}\n</super-exec>"
+session_context="<super-exec>\nYou have the super-exec workflow plugin loaded.\n\n**Below is the full content of your 'super-exec:using-super-exec' skill — your orientation to the workflow:**\n\n${using_super_exec_escaped}${resume_note}${cursor_translation_block}\n</super-exec>"
 
 # Output context injection as JSON.
 # Cursor hooks expect additional_context (snake_case).

@@ -105,7 +105,10 @@ review is pending.
 
 Each skill keeps its bulky bits in sibling files it reads on demand — `branch-gate`, `worktree`, and the
 spec / plan / PR / handoff templates. Skills are written in Claude Code language; Cursor users get a single
-one-way CC→Cursor translation table at `using-super-exec/references/cursor-tools.md`.
+one-way CC→Cursor translation table at `using-super-exec/references/cursor-tools.md`, which the SessionStart
+hook injects into context on Cursor so every subagent runs on an explicit model slug chosen by tier (the
+non-fast Composer for cheap/mid work, the strongest high-effort reasoning model for strong) instead of
+inheriting the session model.
 
 ---
 
