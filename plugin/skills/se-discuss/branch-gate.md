@@ -1,8 +1,8 @@
 # Branch gate (reference)
 
-Loaded by `se-shape` at its branch/ticket gate step (the first checklist item of a design
-session). This is a reference, not a standalone skill — `se-shape` reads it on demand and follows
-it to completion before anything else in the shape session. It ensures:
+Loaded by `se-discuss` at its branch/ticket gate step (the first checklist item of a design
+session). This is a reference, not a standalone skill — `se-discuss` reads it on demand and follows
+it to completion before anything else in the discuss session. It ensures:
 
 1. Work lands on a correctly-named feature branch (never on `main`, `develop`, or any integration branch).
 2. The branch name follows the repo's own convention (or the bundled default when the repo is silent).

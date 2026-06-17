@@ -83,7 +83,7 @@ Resolve all concrete model IDs and dispatch details from the `se-subagent` skill
 | Role | Prose alias | Reference |
 |---|---|---|
 | Runner | cheap / script-runner tier | `se-subagent` skill → "Script-runner" row |
-| Judge / Verifier | strong non-fast tier | `se-subagent` skill → "Shape interview · Plan · Review · verifier judgment" row |
+| Judge / Verifier | strong non-fast tier | `se-subagent` skill → "Discuss interview · Plan · Review · verifier judgment" row |
 | Fixer | implementer / mid tier (PINNED to `sonnet` on CC) | `se-subagent` skill → "Implementer · Fixer" row and pinned-to-sonnet policy |
 | Subagent dispatch | `Task` tool | `se-subagent` skill → "Subagent Dispatch" section |
 

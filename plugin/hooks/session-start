@@ -12,7 +12,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # .super-exec/active   A /se-* driver skill on its       se-pr on PR completion;
 #                      session-activation step            se-exec on the no-PR exit
-#                      (se-shape, se-plan, se-exec).      (final review with *Finish
+#                      (se-discuss, se-plan, se-exec).      (final review with *Finish
 #                                                         Auto-PR OFF and the user
 #                                                         declines the PR); OR the
 #                                                         stale-TTL sweep on
@@ -60,7 +60,7 @@
 #   UNCOMMITTED .git/info/exclude (idempotent). This keeps the working dir out
 #   of git WITHOUT touching the team-shared .gitignore — a local-only artifact
 #   deserves a local-only ignore — and it runs every session (every entrypoint),
-#   so it does not depend on se-shape's branch gate having run. No marker is
+#   so it does not depend on se-discuss's branch gate having run. No marker is
 #   written here.
 # =============================================================================
 
@@ -87,7 +87,7 @@ SUPER_EXEC_DIR="${PROJECT_DIR}/.super-exec"
 # ---------------------------------------------------------------------------
 # Keep super-exec's local-only working dir (.super-exec/) out of git via the
 # repo-local, UNCOMMITTED .git/info/exclude rather than the team-shared
-# .gitignore. Runs every session, so it does not depend on se-shape's branch
+# .gitignore. Runs every session, so it does not depend on se-discuss's branch
 # gate. Idempotent: the pattern is appended only when absent.
 ensure_local_ignore() {
   local exclude_rel exclude_file
@@ -163,7 +163,7 @@ if [ -f "${SUPER_EXEC_DIR}/active" ]; then
   if [ -n "$plan_context" ]; then
     resume_note="\n\n---\n**SUPER-EXEC SESSION IN PROGRESS**\n\nA super-exec session is active (marker age: ${active_mtime:-unknown}).\nIn-progress plan: ${plan_context}\n\nYou can resume this session with \`/se-exec\`. If this marker appears stale (the timestamp above is old relative to the current date), surface that to the user and ask whether to clear it — do NOT auto-delete the marker.\n---"
   else
-    resume_note="\n\n---\n**SUPER-EXEC SESSION IN PROGRESS (no in-progress plan found)**\n\nA super-exec \`active\` marker exists (marker age: ${active_mtime:-unknown}) but no in-progress plan.md was found under \`.super-exec/\`. This may indicate the session never advanced past shape/plan, or the plan directory was cleaned up. If the marker looks stale, surface that to the user. Do NOT auto-delete the marker.\n---"
+    resume_note="\n\n---\n**SUPER-EXEC SESSION IN PROGRESS (no in-progress plan found)**\n\nA super-exec \`active\` marker exists (marker age: ${active_mtime:-unknown}) but no in-progress plan.md was found under \`.super-exec/\`. This may indicate the session never advanced past discuss/plan, or the plan directory was cleaned up. If the marker looks stale, surface that to the user. Do NOT auto-delete the marker.\n---"
   fi
 fi
 

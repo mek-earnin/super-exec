@@ -7,17 +7,17 @@ description: Use when starting any new feature, fix, or task — super-exec orie
 
 Complete workflow from vague idea to PR — less baby sitting, enforcing discipline at every stage, adapt to your repo convention. super-exec runs `spec → plan → execute → verify → review → PR` so sessions produce shippable work, not half-finished attempts.
 
-**Reach for these proactively.** When the user starts feature work — "let's build X", "add Y", "change how Z works" — invoke `se-shape` rather than diving into code; when a spec is ready, `se-plan`; when a plan is ready, `se-exec`. You don't need the user to name the skill. Match the work to the stage and use it. (Trivial one-line fixes don't need the full workflow — judge when it fits.)
+**Reach for these proactively.** When the user starts feature work — "let's build X", "add Y", "change how Z works" — invoke `se-discuss` rather than diving into code; when a spec is ready, `se-plan`; when a plan is ready, `se-exec`. You don't need the user to name the skill. Match the work to the stage and use it. (Trivial one-line fixes don't need the full workflow — judge when it fits.)
 
 ## The three entrypoint skills
 
 super-exec ships as **skills only** — no separate slash commands. Each entrypoint is a skill you
-invoke as `/se-shape`, `/se-plan`, or `/se-exec` (or that the model auto-invokes when the work
+invoke as `/se-discuss`, `/se-plan`, or `/se-exec` (or that the model auto-invokes when the work
 matches); on entry each writes the `.super-exec/active` session marker that makes the guards live.
 Behavior is identical whether invoked manually or automatically.
 
-- `/se-shape` — **Design session.** Shape a spec from a raw idea or task description. Produces a structured spec document that must be approved before planning. On spec approval, se-shape **auto-chains into se-plan in the same session** — you do not invoke `/se-plan` by hand.
-- `/se-plan` — **Plan / re-plan / re-entry.** Turn a spec into an architecture + verification plan, or re-enter an in-progress plan mid-session. Must be reviewed before execution. (Entered automatically from se-shape; manual invocation still works for re-planning.) The **plan → execute boundary stays a hard fresh-session step** — never auto-chained.
+- `/se-discuss` — **Design session.** Discuss a spec from a raw idea or task description. Produces a structured spec document that must be approved before planning. On spec approval, se-discuss **auto-chains into se-plan in the same session** — you do not invoke `/se-plan` by hand.
+- `/se-plan` — **Plan / re-plan / re-entry.** Turn a spec into an architecture + verification plan, or re-enter an in-progress plan mid-session. Must be reviewed before execution. (Entered automatically from se-discuss; manual invocation still works for re-planning.) The **plan → execute boundary stays a hard fresh-session step** — never auto-chained.
 - `/se-exec` — **Build session.** Execute the current plan task by task, with verification checkpoints between tasks. Does not proceed past a failing checkpoint. Two toggles set at entry: *review before each commit?* and *Auto-PR?* — the second is the "human in the loop?" signal. Auto-PR OFF ends with a human work-review and a "create a draft PR?" choice; a "no" ends the session with no PR.
 
 ## Precedence (if superpowers is also loaded)
@@ -26,7 +26,7 @@ Behavior is identical whether invoked manually or automatically.
 If the `superpowers` plugin is also loaded this session, super-exec and superpowers overlap and compete for the same triggers ("let's build X", "add Y", "change Z"). super-exec is self-contained and owns the development workflow: **wherever the two overlap, drive the work through the super-exec spine, not superpowers' equivalent.** This binds you as the controller AND every subagent you dispatch.
 
 Use super-exec, not superpowers, for:
-- shaping → `se-shape` (not `superpowers:brainstorming`)
+- discussing → `se-discuss` (not `superpowers:brainstorming`)
 - planning → `se-plan` (not `superpowers:writing-plans`)
 - building → `se-exec` (not `superpowers:executing-plans` / `superpowers:subagent-driven-development`)
 - verifying → `se-verify` (not `superpowers:verification-before-completion`)

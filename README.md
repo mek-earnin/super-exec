@@ -28,13 +28,13 @@ super-exec is **self-contained**. These make it nicer when present and are skipp
 | Install | When | What it adds |
 |---|---|---|
 | **impeccable** | You work on **UI** (frontend apps, components, styles) | Production-grade UI design direction, build (`craft`), and review (`critique`). Recommended if you touch UI. |
-| **caveman** | You want terse, high-signal chat | Compresses the shape interview's phrasing (keeps all substance). |
+| **caveman** | You want terse, high-signal chat | Compresses the discuss interview's phrasing (keeps all substance). |
 
 If neither is installed, super-exec runs the full workflow anyway and tells you what it skipped.
 
 ### If superpowers is also installed
 
-super-exec and superpowers overlap — both try to drive feature work. Where they overlap (shape / plan / build / verify / review / PR), super-exec asserts best-effort precedence: its workflow drives those steps, and superpowers stays available for what super-exec doesn't cover (e.g. debugging). No setup is needed for this to work.
+super-exec and superpowers overlap — both try to drive feature work. Where they overlap (discuss / plan / build / verify / review / PR), super-exec asserts best-effort precedence: its workflow drives those steps, and superpowers stays available for what super-exec doesn't cover (e.g. debugging). No setup is needed for this to work.
 
 **Optional:** To remove the overlap entirely, you can disable superpowers in projects where you use super-exec via `/plugin` or per-project settings. This is only a recommendation — super-exec works fine with superpowers left enabled. See ADR 0004 for the full coexistence rationale.
 
@@ -46,7 +46,7 @@ Two sessions, one hard boundary at **plan → build**.
 
 ```mermaid
 flowchart TD
-    A([🧑 You: /se-shape]) --> B[super-exec: interview you to a shared spec]
+    A([🧑 You: /se-discuss]) --> B[super-exec: interview you to a shared spec]
     B --> G1{{🧑 You: approve the spec — super-exec commits it}}
     G1 --> C[super-exec: auto-continues to planning]
     C --> D[super-exec: design architecture + verification, bind repo skills]
@@ -57,7 +57,7 @@ flowchart TD
     G3 --> H([📦 Pull request draft])
 ```
 
-The **shape → plan** hop is automatic: once you approve the spec, super-exec commits it and continues
+The **discuss → plan** hop is automatic: once you approve the spec, super-exec commits it and continues
 straight into planning in the same session. The only hard boundary is **plan → build** — start `/se-exec`
 in a fresh session. At build entry you set two toggles: *review before each commit?* and *Auto-PR?*
 With *review before each commit?* **OFF**, that one choice is your standing go-ahead — the agent
@@ -70,7 +70,7 @@ a draft PR (a "no" ends the session with no PR).
 
 | 🧑 You give / decide | 🤖 super-exec automates |
 |---|---|
-| Run `/se-shape`, `/se-plan`, `/se-exec` | Researches the codebase via subagents (instead of asking) |
+| Run `/se-discuss`, `/se-plan`, `/se-exec` | Researches the codebase via subagents (instead of asking) |
 | Answer the interview (the **WHAT**) | Drafts the spec to a fixed template; sharpens terms |
 | Resolve open questions in planning (the **HOW**) | Creates the branch, designs architecture + verification |
 | Confirm the ticket / branch | Binds repo skills to tasks (reuse over hand-rolling) |
@@ -90,7 +90,7 @@ review is pending.
 
 | Tool | What it does | When to use |
 |---|---|---|
-| **`/se-shape`** | Design session. Interviews you to a shared spec (the WHAT only), with a docs-review checkpoint. | Starting a new feature or changing behavior. |
+| **`/se-discuss`** | Design session. Interviews you to a shared spec (the WHAT only), with a docs-review checkpoint. | Starting a new feature or changing behavior. |
 | **`/se-plan`** | Plan session. Turns a committed spec into an architecture + verification plan; binds repo skills to tasks. Also re-enters an existing plan. | After a spec is committed, or to re-plan. |
 | **`/se-exec`** | Build session. Runs the execute→verify→review loops task by task, then opens the PR. Resumes from a handoff if context ran out. | After a plan is reviewed. Start in a fresh session. |
 

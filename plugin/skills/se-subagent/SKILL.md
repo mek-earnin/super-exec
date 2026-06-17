@@ -14,7 +14,7 @@ Set the model with the family **alias**, not a pinned version string. Aliases (`
 
 | Tier (prose alias) | Roles | Model alias |
 |---|---|---|
-| **strong** (strong non-fast / arch model / judge) | shape interview, plan, arch-gate & deep review, impeccable-critique, verifier judgment, handoff authoring | `opus` (non-fast) |
+| **strong** (strong non-fast / arch model / judge) | discuss interview, plan, arch-gate & deep review, impeccable-critique, verifier judgment, handoff authoring | `opus` (non-fast) |
 | **mid** (implementer / fixer) | implementer, fixer, mid-scope edits | `sonnet` (**pinned — see below**) |
 | **cheap** (script-runner / runner / finder / investigator) | run lint/build/tests, locate code, enumerate the skill catalog, run git/`gh` | `haiku` |
 

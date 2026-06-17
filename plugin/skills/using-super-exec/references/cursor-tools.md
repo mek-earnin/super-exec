@@ -12,7 +12,7 @@ super-exec names model **tiers** by family alias so they never go stale (see the
 
 | CC alias | Tier / role | Cursor |
 |---|---|---|
-| `opus` (non-fast) | strong — shape interview, plan, arch-gate & deep review, verifier judgment, handoff authoring | The strongest available reasoning model at high reasoning effort — latest GPT (e.g. GPT-5.5, Extra High) **or** latest Opus (e.g. Opus 4.8, Extra High); if none is selectable, fall back to Default / inherit (non-fast). |
+| `opus` (non-fast) | strong — discuss interview, plan, arch-gate & deep review, verifier judgment, handoff authoring | The strongest available reasoning model at high reasoning effort — latest GPT (e.g. GPT-5.5, Extra High) **or** latest Opus (e.g. Opus 4.8, Extra High); if none is selectable, fall back to Default / inherit (non-fast). |
 | `sonnet` (pinned) | mid — implementer / fixer | latest composer non-fast |
 | `haiku` | cheap — script-runner / runner / finder / investigator | latest composer non-fast |
 
@@ -38,7 +38,7 @@ super-exec names model **tiers** by family alias so they never go stale (see the
 |---|---|---|
 | Ask the user a structured question (forced choice) | `AskUserQuestion` tool | Cursor-native equivalent — ask the question in chat and wait for the user's reply before proceeding |
 
-> Skills force `AskUserQuestion` for human decision points (the se-shape interview, se-plan risk-grilling, the se-exec toggles). On Cursor with no structured-question tool, degrade to a plain chat question and **wait** for the answer — never assume a default and proceed.
+> Skills force `AskUserQuestion` for human decision points (the se-discuss interview, se-plan risk-grilling, the se-exec toggles). On Cursor with no structured-question tool, degrade to a plain chat question and **wait** for the answer — never assume a default and proceed.
 
 ---
 
