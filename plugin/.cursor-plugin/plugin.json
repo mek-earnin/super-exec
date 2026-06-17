@@ -2,7 +2,7 @@
   "name": "super-exec",
   "displayName": "super-exec",
   "description": "Complete workflow from vague idea to PR — less baby sitting, enforcing discipline at every stage, adapt to your repo convention.",
-  "version": "0.0.4",
+  "version": "0.1.0",
   "author": {
     "name": "Mek",
     "email": "mek.weerakun@earnin.com"

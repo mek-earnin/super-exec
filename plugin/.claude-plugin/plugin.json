@@ -1,6 +1,6 @@
 {
   "name": "super-exec",
-  "version": "0.0.4",
+  "version": "0.1.0",
   "description": "Complete workflow from vague idea to PR — less baby sitting, enforcing discipline at every stage, adapt to your repo convention.",
   "author": {
     "name": "Mek",
