@@ -124,7 +124,8 @@ repo with opinions overrides them, every time. Drop-in, no configuration.
 |---|---|---|
 | Spec | `docs/specs/<feature>.md` | yes (you commit it at spec approval) |
 | ADR / glossary | `docs/adr/…`, `CONTEXT.md` | yes, sparingly |
-| Plan / handoff | `.super-exec/<feature>/<date>-<plan>/` | no — local, gitignored |
+| Plan / handoff | `.super-exec/<feature>/<date>-<plan>/` | no — local, git-ignored |
 
-Plans are local; teammates share only the spec. super-exec adds `.super-exec/` and `research/` to your
-`.gitignore` automatically.
+Plans are local; teammates share only the spec. super-exec keeps `.super-exec/` out of git
+automatically — every session the SessionStart hook lists it in your repo-local, **uncommitted**
+`.git/info/exclude`, so nothing tool-specific ever lands in the team-shared `.gitignore`.

@@ -487,6 +487,76 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Check 7 — SessionStart local-ignore (.git/info/exclude)
+# ---------------------------------------------------------------------------
+# The SessionStart hook keeps super-exec's local-only working dir (.super-exec/)
+# out of git via the repo-local, uncommitted .git/info/exclude (NOT the
+# team-shared .gitignore — ADR 0002). It must do so idempotently on every
+# session and degrade to a no-op outside a git repo. If a future edit drops
+# this, the dir risks being committed (or the team .gitignore gets polluted
+# again).
+echo ""
+echo "Check 7: SessionStart local-ignore"
+
+HOOK="${REPO_ROOT}/plugin/hooks/session-start"
+
+if ! command -v git >/dev/null 2>&1; then
+  fail "git not available — cannot test SessionStart local-ignore"
+else
+  ttmp=$(mktemp -d)
+  trepo="${ttmp}/repo"
+  mkdir -p "$trepo"
+  ( cd "$trepo" && git init -q ) 2>/dev/null || true
+
+  # Run twice to prove idempotency. ensure_local_ignore runs before any JSON
+  # output, so the hook's exit code is irrelevant here.
+  for _ in 1 2; do
+    env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
+      CLAUDE_PROJECT_DIR="$trepo" CLAUDE_PLUGIN_ROOT="${REPO_ROOT}/plugin" \
+      "$HOOK" >/dev/null 2>&1 || true
+  done
+
+  exclude_file="${trepo}/.git/info/exclude"
+  se_count=$(grep -cxF '.super-exec/' "$exclude_file" 2>/dev/null || true); [ -n "$se_count" ] || se_count=0
+
+  if [ "$se_count" = "1" ]; then
+    pass "hook adds .super-exec/ to .git/info/exclude (idempotent across 2 runs)"
+  else
+    fail "exclude entry wrong: .super-exec/=${se_count} (expected 1)"
+  fi
+
+  # research/ is local to THIS repo only — the hook must NOT ignore it in
+  # target repos.
+  if grep -qxF 'research/' "$exclude_file" 2>/dev/null; then
+    fail "hook wrongly added research/ to a target repo's .git/info/exclude"
+  else
+    pass "hook does not touch research/ in target repos (this-repo-only)"
+  fi
+
+  # The pattern must actually make git ignore the dir.
+  ( cd "$trepo" && mkdir -p .super-exec && touch .super-exec/x ) 2>/dev/null || true
+  if ( cd "$trepo" && git check-ignore -q .super-exec/x ) 2>/dev/null; then
+    pass "git treats .super-exec/ as ignored after hook run"
+  else
+    fail "git does not ignore .super-exec/ after hook run"
+  fi
+
+  # Outside a git repo: no error, no .git created (degrade to no-op).
+  tnogit="${ttmp}/notgit"
+  mkdir -p "$tnogit"
+  env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
+    CLAUDE_PROJECT_DIR="$tnogit" CLAUDE_PLUGIN_ROOT="${REPO_ROOT}/plugin" \
+    "$HOOK" >/dev/null 2>&1 || true
+  if [ ! -e "${tnogit}/.git" ]; then
+    pass "hook is a no-op outside a git repo (no .git created)"
+  else
+    fail "hook created .git artifacts outside a git repo"
+  fi
+
+  rm -rf "$ttmp"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""

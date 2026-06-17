@@ -21,8 +21,8 @@ shaping a feature — **means a super-exec design session is starting**. As the 
 needed); a small payload is enough, e.g. `phase: shape` and `started: <current UTC ISO-8601>`.
 Use the `Write` tool for this. Existence + mtime are what the hooks read; the stale-marker
 decision is a model-judged heuristic with no fixed TTL. **Do not commit it** — `.super-exec/` is
-gitignored (the branch gate ensures this). This is the only side-effect at entry; behavior is
-identical for manual and auto invocation.
+kept out of git by the SessionStart hook via the local, uncommitted `.git/info/exclude`. This is
+the only side-effect at entry; behavior is identical for manual and auto invocation.
 
 If invoked with an argument (a ticket id and/or short description), use it to seed the interview —
 still confirm and grill; never assume.
@@ -33,7 +33,7 @@ still confirm and grill; never assume.
 
 Work through every item in order. Do NOT skip any item, even for simple work.
 
-- [ ] **1. Branch / ticket gate** — Read `${CLAUDE_SKILL_DIR}/branch-gate.md` (see [branch-gate.md](./branch-gate.md)) and follow it to completion. Do not duplicate or paraphrase its logic — read and apply it. Do not proceed past this step until the branch gate is satisfied (correct feature branch + `.gitignore` tidy).
+- [ ] **1. Branch / ticket gate** — Read `${CLAUDE_SKILL_DIR}/branch-gate.md` (see [branch-gate.md](./branch-gate.md)) and follow it to completion. Do not duplicate or paraphrase its logic — read and apply it. Do not proceed past this step until the branch gate is satisfied (correct feature branch; `.super-exec/` ignoring is handled automatically by the SessionStart hook via `.git/info/exclude`, not this gate).
 - [ ] **2. Explore project context via subagents** — Dispatch finder subagents (via the `Task` tool) to research: existing domain terms in `CONTEXT.md` (or `CONTEXT-MAP.md` for multi-context repos), related specs in `docs/specs/`, relevant source files, naming conventions, and any code that touches the area of work. Use `Read`, `Bash`, and `Grep` inside these subagents. Do NOT ask the user for anything that can be discovered by reading the codebase.
 - [ ] **3. New-vs-update detection** — Glob `docs/specs/` (and `docs/specs/<app>/` in monorepos). Match an existing spec by ticket key AND feature name. Confirm with the user via `AskUserQuestion`: "I found `docs/specs/INTCOMP-123-payment-retry.md` — is this an update to that spec, or a new one?" An **update** interviews only the **delta**; do not re-interview the whole spec.
 - [ ] **4. Relentless WHAT-only interview** — Ask one question at a time using `AskUserQuestion`. Wait for the answer before the next. Walk every branch of the decision tree. For each question, provide your recommended answer. Prefer multiple-choice options when the answer space is bounded. If a question can be answered by exploring the codebase, dispatch a finder subagent (via `Task`) instead of asking. Never ask about HOW — defer all implementation, architecture, and file-layout questions to se-plan.

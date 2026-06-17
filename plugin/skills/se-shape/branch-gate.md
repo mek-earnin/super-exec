@@ -6,7 +6,8 @@ it to completion before anything else in the shape session. It ensures:
 
 1. Work lands on a correctly-named feature branch (never on `main`, `develop`, or any integration branch).
 2. The branch name follows the repo's own convention (or the bundled default when the repo is silent).
-3. The local `.gitignore` is tidy — `.super-exec/` and `research/` are ignored before any files are written.
+
+The local-only working dir (`.super-exec/`) is kept out of git automatically by the SessionStart hook, which lists it in the repo-local, uncommitted `.git/info/exclude` every session — so this gate makes **no** `.gitignore` edits.
 
 All git execution is delegated to a runner subagent — never run git commands inline in the controller.
 
@@ -21,7 +22,8 @@ All git execution is delegated to a runner subagent — never run git commands i
 - **Fetch and prune.** Dispatch a runner subagent (script-runner tier — see the `se-subagent` skill) with the `Task` tool to run `git fetch --all --prune`. Do not skip this step even on a clean tree.
 - **Detect the base branch.** In the same runner subagent, check whether `origin/develop` exists (`git ls-remote --exit-code origin develop`). If it exists use `origin/develop`. If it does not exist fall back to `origin/main`.
 - **Create the branch (runner subagent).** Still in the runner subagent, execute `git checkout -b <name> origin/<base>^0`. The `^0` suffix detaches from the remote-tracking ref so no upstream is set; the upstream is established on first push. Do not set `--track`.
-- **Ensure `.gitignore` entries.** Read the repo's root `.gitignore`. If `.super-exec/` is absent, append it. If `research/` is absent, append it. These appends are idempotent — never duplicate a line that already exists. Write the file only when at least one entry is missing.
+
+> Ignoring `.super-exec/` is **not** this gate's job — the SessionStart hook already ensures it is in `.git/info/exclude` (local, uncommitted) every session. Do not edit `.gitignore` here.
 
 ---
 
@@ -64,7 +66,7 @@ Use only when neither (a) nor (b) applies.
 | "I'll skip `git fetch --all --prune` — the tree is clean." | Always fetch first. Stale remote-tracking refs can cause the base detection to pick the wrong branch or miss that `develop` has been deleted. |
 | "The current branch name looks roughly right, I'll keep going." | Confirm it actually matches this work before declaring it usable. Read the branch name, show it to the user, and get explicit acknowledgement. |
 | "I'll set `--track` so the user's pushes go to the right place automatically." | Do not set `--track`. Use `git checkout -b <name> origin/<base>^0` exactly. The upstream is set on first push, not at branch creation. |
-| "I'll skip the `.gitignore` check if the branch already existed." | Run the `.gitignore` check unconditionally. It is idempotent and inexpensive, and skipping it risks committing `.super-exec/` or `research/` files. |
+| "I'll append `.super-exec/` to `.gitignore` to be safe." | Don't touch `.gitignore`. The SessionStart hook keeps `.super-exec/` out of git via the local, uncommitted `.git/info/exclude` — editing the team-shared `.gitignore` is the old mechanism and would create a pointless tracked diff. |
 | "Atlassian MCP is unavailable — I'll make up a ticket summary." | Never fabricate ticket data. Degrade gracefully: first ask the user to enable the MCP; if they decline, ask for a raw branch name and use it verbatim. |
 
 ---

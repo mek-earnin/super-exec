@@ -52,7 +52,16 @@
 #   to the user.
 #
 # RESUME DETECT (this hook):
-#   Read-only. Appended to orientation context only. No writes, ever.
+#   Read-only re: markers. Appended to orientation context only. Never writes,
+#   moves, or deletes any .super-exec/ marker.
+#
+# LOCAL-IGNORE (this hook):
+#   The hook's ONE write: it ensures .super-exec/ is listed in the repo-local,
+#   UNCOMMITTED .git/info/exclude (idempotent). This keeps the working dir out
+#   of git WITHOUT touching the team-shared .gitignore — a local-only artifact
+#   deserves a local-only ignore — and it runs every session (every entrypoint),
+#   so it does not depend on se-shape's branch gate having run. No marker is
+#   written here.
 # =============================================================================
 
 set -euo pipefail
@@ -72,6 +81,27 @@ else
 fi
 
 SUPER_EXEC_DIR="${PROJECT_DIR}/.super-exec"
+
+# ---------------------------------------------------------------------------
+# ENSURE LOCAL-ONLY IGNORE (the ONLY write this hook performs)
+# ---------------------------------------------------------------------------
+# Keep super-exec's local-only working dir (.super-exec/) out of git via the
+# repo-local, UNCOMMITTED .git/info/exclude rather than the team-shared
+# .gitignore. Runs every session, so it does not depend on se-shape's branch
+# gate. Idempotent: the pattern is appended only when absent.
+ensure_local_ignore() {
+  local exclude_rel exclude_file
+  # git rev-parse resolves info/exclude correctly even for worktrees/submodules.
+  exclude_rel=$(cd "${PROJECT_DIR}" 2>/dev/null && git rev-parse --git-path info/exclude 2>/dev/null) || return 0
+  [ -n "${exclude_rel}" ] || return 0
+  case "${exclude_rel}" in
+    /*) exclude_file="${exclude_rel}" ;;
+    *)  exclude_file="${PROJECT_DIR}/${exclude_rel}" ;;
+  esac
+  mkdir -p "$(dirname "${exclude_file}")" 2>/dev/null || return 0
+  grep -qxF ".super-exec/" "${exclude_file}" 2>/dev/null || printf '%s\n' ".super-exec/" >> "${exclude_file}"
+}
+ensure_local_ignore || true
 
 # Read using-super-exec orientation content
 using_super_exec_content=$(cat "${PLUGIN_ROOT}/skills/using-super-exec/SKILL.md" 2>&1 || echo "Error reading using-super-exec skill")
