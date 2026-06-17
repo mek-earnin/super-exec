@@ -6,7 +6,7 @@ Write the plan file using exactly this structure. Sections must appear in this o
 # <Plan name>
 
 ## Goal
-<1-3 sentences. Link to the spec: `docs/specs/<feature>.md`>
+<1-3 sentences. Link to the spec: `docs/specs/NNNN-<feature>.md`>
 
 ## Architecture
 <Components, responsibilities, data flow — prose + mermaid or ASCII diagrams.

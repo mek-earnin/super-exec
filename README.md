@@ -128,10 +128,10 @@ repo with opinions overrides them, every time. Drop-in, no configuration.
 
 | Artifact | Location | Committed? |
 |---|---|---|
-| Spec | `docs/specs/<feature>.md` | yes (you commit it at spec approval) |
+| Spec | `docs/specs/NNNN-<feature>.md` | yes (you commit it at spec approval) |
 | ADR / glossary | `docs/adr/…`, `CONTEXT.md` | yes, sparingly |
 | Plan / handoff | `.super-exec/<feature>/<date>-<plan>/` | no — local, git-ignored |
 
-Plans are local; teammates share only the spec. super-exec keeps `.super-exec/` out of git
+`NNNN` is the next available four-digit number in `docs/specs/`, found by scanning existing spec filenames and incrementing the highest prefix. Plans are local; teammates share only the spec. super-exec keeps `.super-exec/` out of git
 automatically — every session the SessionStart hook lists it in your repo-local, **uncommitted**
 `.git/info/exclude`, so nothing tool-specific ever lands in the team-shared `.gitignore`.
