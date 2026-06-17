@@ -509,11 +509,12 @@ else
   ( cd "$trepo" && git init -q ) 2>/dev/null || true
 
   # Run twice to prove idempotency. ensure_local_ignore runs before any JSON
-  # output, so the hook's exit code is irrelevant here.
+  # output, so the hook's exit code is irrelevant here. </dev/null because the
+  # hook now reads its payload from stdin (do not block on a missing pipe).
   for _ in 1 2; do
     env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
       CLAUDE_PROJECT_DIR="$trepo" CLAUDE_PLUGIN_ROOT="${REPO_ROOT}/plugin" \
-      "$HOOK" >/dev/null 2>&1 || true
+      "$HOOK" >/dev/null 2>&1 </dev/null || true
   done
 
   exclude_file="${trepo}/.git/info/exclude"
@@ -546,11 +547,34 @@ else
   mkdir -p "$tnogit"
   env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
     CLAUDE_PROJECT_DIR="$tnogit" CLAUDE_PLUGIN_ROOT="${REPO_ROOT}/plugin" \
-    "$HOOK" >/dev/null 2>&1 || true
+    "$HOOK" >/dev/null 2>&1 </dev/null || true
   if [ ! -e "${tnogit}/.git" ]; then
     pass "hook is a no-op outside a git repo (no .git created)"
   else
     fail "hook created .git artifacts outside a git repo"
+  fi
+
+  # Cursor regression: Cursor's sessionStart payload carries the workspace path
+  # in workspace_roots[] (NOT cwd) and does not reliably export a project-dir
+  # env var. The hook must resolve PROJECT_DIR from the payload, NOT fall back
+  # to PWD (the plugin dir). Simulate that: cwd = a separate git repo, NO
+  # project-dir env vars, payload = {workspace_roots:[<userrepo>]}. The exclude
+  # MUST land in <userrepo>, never in the cwd repo.
+  userrepo="${ttmp}/cursor-user-repo"
+  cwdrepo="${ttmp}/cursor-cwd-repo"   # stands in for the plugin dir
+  mkdir -p "$userrepo" "$cwdrepo"
+  ( cd "$userrepo" && git init -q ) 2>/dev/null || true
+  ( cd "$cwdrepo" && git init -q ) 2>/dev/null || true
+  cursor_payload="{\"hook_event_name\":\"sessionStart\",\"workspace_roots\":[\"${userrepo}\"]}"
+  ( cd "$cwdrepo" && printf '%s' "$cursor_payload" | env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
+      CURSOR_PLUGIN_ROOT="${REPO_ROOT}/plugin" "$HOOK" >/dev/null 2>&1 ) || true
+  if grep -qxF '.super-exec/' "${userrepo}/.git/info/exclude" 2>/dev/null \
+     && ! grep -qxF '.super-exec/' "${cwdrepo}/.git/info/exclude" 2>/dev/null; then
+    pass "Cursor payload: exclude lands in workspace_roots[0], not PWD"
+  else
+    in_user=$(grep -cxF '.super-exec/' "${userrepo}/.git/info/exclude" 2>/dev/null || true)
+    in_cwd=$(grep -cxF '.super-exec/' "${cwdrepo}/.git/info/exclude" 2>/dev/null || true)
+    fail "Cursor payload misrouted exclude (workspace=${in_user:-0} pwd=${in_cwd:-0}; expected 1/0)"
   fi
 
   rm -rf "$ttmp"

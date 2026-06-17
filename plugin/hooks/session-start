@@ -70,9 +70,46 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# Determine the target project directory from the environment.
-# Priority: CLAUDE_PROJECT_DIR (Claude Code) → CURSOR_PROJECT_DIR (Cursor) → PWD.
-if [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
+# Read the hook payload from stdin (JSON). Harnesses send it and close stdin;
+# the `-t 0` guard avoids a blocking read on an interactive/manual run with no
+# piped input.
+hook_payload=""
+if [ ! -t 0 ]; then
+  hook_payload=$(cat 2>/dev/null || true)
+fi
+
+# Determine the target project directory. The payload is AUTHORITATIVE and is
+# preferred over env vars:
+#   - Claude Code's SessionStart payload carries `cwd`.
+#   - Cursor's sessionStart payload carries `workspace_roots[]` (NO `cwd`) and
+#     does NOT reliably export CURSOR_PROJECT_DIR to the hook process. An
+#     env-only resolution therefore falls back to PWD — which is the PLUGIN
+#     directory, not the user's repo — so the local-ignore write lands in the
+#     wrong repository and the user's .super-exec/ is never ignored.
+# Precedence: payload (cwd → workspace_roots[0]) → CLAUDE_PROJECT_DIR →
+# CURSOR_PROJECT_DIR → PWD.
+payload_dir=""
+if [ -n "${hook_payload}" ] && command -v node >/dev/null 2>&1; then
+  payload_dir=$(printf '%s' "${hook_payload}" | node -e "
+    let raw='';
+    process.stdin.on('data', d => raw += d);
+    process.stdin.on('end', () => {
+      try {
+        const p = JSON.parse(raw);
+        let dir = (typeof p.cwd === 'string' && p.cwd) ? p.cwd : '';
+        if (!dir && Array.isArray(p.workspace_roots) && p.workspace_roots.length
+            && typeof p.workspace_roots[0] === 'string') {
+          dir = p.workspace_roots[0];
+        }
+        process.stdout.write(dir);
+      } catch (e) { process.stdout.write(''); }
+    });
+  " 2>/dev/null || true)
+fi
+
+if [ -n "${payload_dir}" ]; then
+  PROJECT_DIR="${payload_dir}"
+elif [ -n "${CLAUDE_PROJECT_DIR:-}" ]; then
   PROJECT_DIR="${CLAUDE_PROJECT_DIR}"
 elif [ -n "${CURSOR_PROJECT_DIR:-}" ]; then
   PROJECT_DIR="${CURSOR_PROJECT_DIR}"
