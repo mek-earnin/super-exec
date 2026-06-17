@@ -442,6 +442,51 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Check 6 — Auto-commit authorization framing
+# ---------------------------------------------------------------------------
+echo ""
+echo "Check 6: Auto-commit authorization framing"
+
+# The review-before-commit OFF toggle is documented as the user's standing
+# authorization to auto-commit per task — this is what reconciles super-exec
+# auto-commit with host agent policies that forbid committing without an
+# explicit per-action user request. If a future edit silently drops this
+# framing, the conflict returns (the agent babysits each commit). These greps
+# guard the framing's presence at every canonical site. The behavior itself
+# (whether the model commits) is not unit-testable here; presence is.
+#
+# Each entry: <relative path>|||<case-insensitive fixed phrase that must exist>
+framing_sites=(
+  "plugin/skills/se-exec/SKILL.md|||standing authorization"
+  "plugin/skills/using-super-exec/SKILL.md|||standing authorization"
+  "plugin/skills/using-super-exec/references/cursor-tools.md|||standing authorization"
+  "docs/specs/core-workflow.md|||standing authorization"
+  "README.md|||standing go-ahead"
+)
+
+for entry in "${framing_sites[@]}"; do
+  rel="${entry%%|||*}"
+  phrase="${entry##*|||}"
+  file="${REPO_ROOT}/${rel}"
+  if [ ! -f "$file" ]; then
+    fail "framing: file not found: ${rel}"
+  elif grep -qiF "$phrase" "$file" 2>/dev/null; then
+    pass "framing present in ${rel} (\"${phrase}\")"
+  else
+    fail "framing missing in ${rel}: expected phrase \"${phrase}\""
+  fi
+done
+
+# The Cursor-specific resolution lives in a dedicated reference section; its
+# header is the durable anchor for the host-policy reconciliation.
+cursor_ref="${REPO_ROOT}/plugin/skills/using-super-exec/references/cursor-tools.md"
+if grep -qiF "Host commit policy vs auto-commit" "$cursor_ref" 2>/dev/null; then
+  pass "cursor-tools.md has 'Host commit policy vs auto-commit' section"
+else
+  fail "cursor-tools.md missing 'Host commit policy vs auto-commit' section"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""
