@@ -4,7 +4,7 @@ Write the spec file using exactly this structure. Sections must appear in this o
 
 ```markdown
 # <Feature>
-> Ticket: INTCOMP-####  ·  Status: active
+> Ticket: INTCOMP-#### | NO_TICKET  ·  Status: active
 
 ## Problem / Why
 
@@ -23,3 +23,5 @@ Write the spec file using exactly this structure. Sections must appear in this o
 ```
 
 The **Behavior / Requirements** section contains acceptance criteria with NO HOW. If a requirement implies an implementation (e.g., "use a queue"), extract the underlying behavior ("retries must be durable across process restarts") and state that instead. Architecture and implementation details belong to se-plan.
+
+Use `NO_TICKET` only when the user confirms there is no Jira ticket for the task.

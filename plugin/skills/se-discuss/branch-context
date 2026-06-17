@@ -1,0 +1,121 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const { execFileSync } = require('child_process');
+
+const seedText = process.argv.slice(2).join(' ');
+const startDir =
+  process.env.CLAUDE_PROJECT_DIR ||
+  process.env.CURSOR_PROJECT_DIR ||
+  process.cwd();
+
+function runGit(args, options = {}) {
+  try {
+    return execFileSync('git', args, {
+      cwd: options.cwd || startDir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: options.timeout || 5000,
+    }).trim();
+  } catch (_) {
+    return '';
+  }
+}
+
+function detectTicket(text) {
+  const match = text.match(/[A-Z][A-Z0-9]+-\d+/i);
+  return match ? match[0].toUpperCase() : '';
+}
+
+function detectConvention(branches) {
+  const patterns = [
+    ['type-ticket-slash', /^(feat|fix|chore|ci|docs|test|style|refactor|perf)\/[A-Z][A-Z0-9]+-\d+/i],
+    ['ticket-slash', /^[A-Z][A-Z0-9]+-\d+\//i],
+    ['ticket-hyphen', /^[a-z][a-z0-9]+-\d+-/i],
+    ['type-slash', /^(feat|fix|chore|ci|docs|test|style|refactor|perf)\//i],
+    ['type-hyphen', /^(feat|fix|chore|ci|docs|test|style|refactor|perf)-/i],
+  ];
+
+  const counts = Object.fromEntries(patterns.map(([name]) => [name, 0]));
+  for (const branch of branches) {
+    for (const [name, pattern] of patterns) {
+      if (pattern.test(branch)) {
+        counts[name] += 1;
+        break;
+      }
+    }
+  }
+
+  const [name, count] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0] || ['', 0];
+  const threshold = Math.ceil(branches.length * 2 / 3);
+  return count > 0 && count >= threshold ? name : '';
+}
+
+function hasLocalRef(ref) {
+  return Boolean(runGit(['rev-parse', '--verify', '--quiet', ref]));
+}
+
+const gitRoot = runGit(['rev-parse', '--show-toplevel']);
+if (!gitRoot) {
+  console.log(JSON.stringify({ isGitRepo: false, error: 'not a git repository' }, null, 2));
+  process.exit(0);
+}
+
+const currentBranch = runGit(['branch', '--show-current'], { cwd: gitRoot });
+const statusShort = runGit(['status', '--short'], { cwd: gitRoot });
+const recentBranches = runGit(
+  [
+    'for-each-ref',
+    '--sort=-committerdate',
+    '--format=%(refname:short)',
+    '--count=20',
+    'refs/heads',
+    'refs/remotes/origin',
+  ],
+  { cwd: gitRoot }
+)
+  .split('\n')
+  .map((branch) => branch.replace(/^origin\//, ''))
+  .filter((branch) => branch && branch !== 'HEAD')
+  .filter((branch, index, branches) => branches.indexOf(branch) === index);
+
+const remoteDevelopExists =
+  hasLocalRef('origin/develop') ||
+  Boolean(runGit(['ls-remote', '--exit-code', '--heads', 'origin', 'develop'], { cwd: gitRoot }));
+const remoteMainExists =
+  hasLocalRef('origin/main') ||
+  Boolean(runGit(['ls-remote', '--exit-code', '--heads', 'origin', 'main'], { cwd: gitRoot }));
+
+const repoSkillPath = path.join(gitRoot, '.claude', 'skills', 'git-new-branch', 'SKILL.md');
+const packageJsonPath = path.join(gitRoot, 'package.json');
+let packageName = '';
+try {
+  packageName = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')).name || '';
+} catch (_) {
+  packageName = '';
+}
+
+const protectedBranchPattern = /^(main|master|develop|trunk|staging|production|prod|qa|release\/.+)$/i;
+const inferredTicket = detectTicket(`${seedText} ${currentBranch}`);
+
+console.log(
+  JSON.stringify(
+    {
+      isGitRepo: true,
+      repoRoot: gitRoot,
+      repoName: path.basename(gitRoot),
+      packageName,
+      currentBranch,
+      isProtectedBranch: protectedBranchPattern.test(currentBranch),
+      hasUncommittedChanges: statusShort.length > 0,
+      inferredTicket: inferredTicket || null,
+      repoBranchSkill: fs.existsSync(repoSkillPath) ? repoSkillPath : null,
+      recentBranches,
+      conventionHint: detectConvention(recentBranches) || null,
+      preferredBase: remoteDevelopExists ? 'origin/develop' : remoteMainExists ? 'origin/main' : null,
+    },
+    null,
+    2
+  )
+);

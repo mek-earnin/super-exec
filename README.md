@@ -57,6 +57,8 @@ flowchart TD
     G3 --> H([📦 Pull request draft])
 ```
 
+During discuss, super-exec starts branch/ticket lookup in the background so the interview does not wait on git or Atlassian. After the WHAT is clear, it asks once for any missing Jira ticket and shows the proposed branch name. No branch is created until you approve the spec; then it creates/switches to the confirmed branch, writes the spec, commits it, and continues into planning.
+
 The **discuss → plan** hop is automatic: once you approve the spec, super-exec commits it and continues
 straight into planning in the same session. The only hard boundary is **plan → build** — start `/se-exec`
 in a fresh session. At build entry you set two toggles: *review before each commit?* and *Auto-PR?*
@@ -72,8 +74,8 @@ a draft PR (a "no" ends the session with no PR).
 |---|---|
 | Run `/se-discuss`, `/se-plan`, `/se-exec` | Researches the codebase via subagents (instead of asking) |
 | Answer the interview (the **WHAT**) | Drafts the spec to a fixed template; sharpens terms |
-| Resolve open questions in planning (the **HOW**) | Creates the branch, designs architecture + verification |
-| Confirm the ticket / branch | Binds repo skills to tasks (reuse over hand-rolling) |
+| Resolve open questions in planning (the **HOW**) | Designs architecture + verification |
+| Confirm the ticket / branch once during discuss | Creates the confirmed branch only after spec approval |
 | **Review + approve** the spec & plan | Commits the spec; implements each task in subagents |
 | Set 2 toggles once (review before each commit? Auto-PR?) | Verifies with real evidence (runner runs it, a strong model judges) |
 | **Review** the work at the final checkpoint (Auto-PR OFF) | Reviews its own code, fixes, commits, then opens the PR draft |
@@ -103,7 +105,7 @@ review is pending.
 | `se-pr` | PR creation only (the final review checkpoint lives in se-exec). Delegates to the repo's `create-pr` skill, or mirrors `pull_request_template.md`. |
 | `se-handoff` | Writes a resume handoff when the build session approaches its context limit. |
 
-Each skill keeps its bulky bits in sibling files it reads on demand — `branch-gate`, `worktree`, and the
+Each skill keeps its bulky bits in sibling files it reads on demand — `branch-gate`, `branch-context`, `worktree`, and the
 spec / plan / PR / handoff templates. Skills are written in Claude Code language; Cursor users get a single
 one-way CC→Cursor translation table at `using-super-exec/references/cursor-tools.md`, which the SessionStart
 hook injects into context on Cursor so every subagent runs on an explicit model slug chosen by tier (the
