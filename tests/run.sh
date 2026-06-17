@@ -460,7 +460,7 @@ framing_sites=(
   "plugin/skills/se-exec/SKILL.md|||standing authorization"
   "plugin/skills/using-super-exec/SKILL.md|||standing authorization"
   "plugin/skills/using-super-exec/references/cursor-tools.md|||standing authorization"
-  "docs/specs/core-workflow.md|||standing authorization"
+  "docs/specs/0001-core-workflow.md|||standing authorization"
   "README.md|||standing go-ahead"
 )
 
@@ -579,6 +579,80 @@ else
 
   rm -rf "$ttmp"
 fi
+
+# ---------------------------------------------------------------------------
+# Check 8 — Spec filename convention
+# ---------------------------------------------------------------------------
+echo ""
+echo "Check 8: Spec filename convention"
+
+spec_name_result=$(node -e "
+  const fs = require('fs');
+  const path = require('path');
+  const specsRoot = path.join('${REPO_ROOT}', 'docs/specs');
+  const bad = [];
+  const seenByDir = new Map();
+
+  function walk(dir) {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+
+      const rel = path.relative('${REPO_ROOT}', full);
+      if (!/^\\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\\.md$/.test(entry.name)) {
+        bad.push(rel);
+        continue;
+      }
+
+      const dirKey = path.relative(specsRoot, dir) || '.';
+      const num = entry.name.slice(0, 4);
+      const key = dirKey + '/' + num;
+      if (seenByDir.has(key)) {
+        bad.push(rel + ' (duplicate number with ' + seenByDir.get(key) + ')');
+      } else {
+        seenByDir.set(key, rel);
+      }
+    }
+  }
+
+  walk(specsRoot);
+  process.stdout.write(bad.length ? bad.join('\\n') : 'ok');
+" 2>/dev/null || echo "ERROR")
+
+if [ "$spec_name_result" = "ok" ]; then
+  pass "all docs/specs markdown files use NNNN-<slug>.md"
+else
+  fail "docs/specs files must use NNNN-<slug>.md:"
+  echo "$spec_name_result" | sed 's/^/    /'
+fi
+
+spec_convention_sites=(
+  "plugin/skills/se-discuss/SKILL.md|||docs/specs/NNNN-<feature>.md"
+  "plugin/skills/se-discuss/SKILL.md|||next available number"
+  "plugin/skills/se-plan/SKILL.md|||docs/specs/NNNN-<feature>.md"
+  "plugin/skills/se-plan/plan-template.md|||docs/specs/NNNN-<feature>.md"
+  "docs/specs/0001-core-workflow.md|||docs/specs/NNNN-<feature>.md"
+  "README.md|||docs/specs/NNNN-<feature>.md"
+  "docs/adr/0002-local-only-plans-specs-are-the-shared-contract.md|||docs/specs/NNNN-<feature>.md"
+)
+
+for entry in "${spec_convention_sites[@]}"; do
+  rel="${entry%%|||*}"
+  phrase="${entry##*|||}"
+  file="${REPO_ROOT}/${rel}"
+  if [ ! -f "$file" ]; then
+    fail "spec convention: file not found: ${rel}"
+  elif grep -qF "$phrase" "$file" 2>/dev/null; then
+    pass "spec convention present in ${rel} (\"${phrase}\")"
+  else
+    fail "spec convention missing in ${rel}: expected phrase \"${phrase}\""
+  fi
+done
 
 # ---------------------------------------------------------------------------
 # Summary

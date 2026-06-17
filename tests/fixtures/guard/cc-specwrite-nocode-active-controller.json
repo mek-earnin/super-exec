@@ -1,6 +1,6 @@
 {
   "tool_input": {
-    "file_path": "docs/specs/payment-retry.md",
+    "file_path": "docs/specs/0007-payment-retry.md",
     "content": "# Payment retry\n\n## Behavior / Requirements\n\nRetries must be durable across process restarts.\n"
   }
 }
