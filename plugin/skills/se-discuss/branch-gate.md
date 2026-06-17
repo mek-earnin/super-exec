@@ -5,7 +5,7 @@ reads it on demand and follows the phase named by its checklist. It ensures:
 
 1. The interview does not block on git or Atlassian MCP.
 2. The user confirms ticket + branch name once, after the WHAT is clear.
-3. Work lands on a correctly-named feature branch before any committed artifact is written.
+3. Work lands on a correctly-named feature branch before any approved artifact is committed.
 
 The local-only working dir (`.super-exec/`) is kept out of git automatically by the SessionStart hook, which lists it in the repo-local, uncommitted `.git/info/exclude` every session — so this gate makes **no** `.gitignore` edits.
 
@@ -25,23 +25,27 @@ If background shell work is unavailable, skip the wait and run `${CLAUDE_SKILL_D
 
 ## Phase B: ticket + branch confirmation (after last WHAT question)
 
-Run this after the feature slug is stable and before the spec-approval prompt.
+Run this after the feature slug is stable and before writing the spec file.
 
 - **Read branch context.** If the background result is ready, read it. If not, wait briefly; if still unavailable, run `${CLAUDE_SKILL_DIR}/branch-context` synchronously now. Use the final feature slug as the source of truth for branch naming.
 - **Resolve ticket once.** If a ticket was provided by the user, inferred from the current branch, or discovered from the prompt, use it. If no ticket is known, ask exactly once: "Do you have a Jira ticket for this task?" If the answer is no, record `NO_TICKET`.
 - **Use Atlassian MCP when possible.** If a ticket is known and Atlassian MCP is available, query it for the title/description and use that data to derive the branch summary. If MCP is unavailable, ask the user to either enable it or confirm the branch summary manually. Never fabricate ticket data.
 - **Resolve branch-name convention by precedence.** Follow the three-step precedence rule (see "Convention precedence" below). Surface the resolved convention before proposing the name.
-- **Construct and confirm the branch name.** Present the proposed ticket value and branch name to the user. Accept or adjust before proceeding. This confirmation is durable for the approval/commit step; do not ask again later unless facts changed or branch creation fails.
+- **Construct and confirm the branch name.** Present the proposed ticket value and branch name to the user. Accept or adjust before proceeding. This confirmation is durable for the approval/commit step; do not ask again later unless facts changed, branch creation fails, or checkout conflicts.
 
 ## Phase C: create/switch confirmed branch (after spec approval)
 
-Run this only after the user approves the spec and the next action is writing/committing artifacts.
+Run this only after the user approves the already-written spec and the next action is committing artifacts.
 
-- **Re-check current branch.** If already on the confirmed branch, continue. If on any other branch — protected or not — switch/create before writing artifacts. Do not leave approved spec changes on a non-matching branch.
+- **Re-check current branch.** If already on the confirmed branch, continue. If on any other branch — protected or not — switch/create before committing artifacts. Do not commit approved spec changes on a non-matching branch.
+- **Inspect dirty state before switching.** The approved review artifacts (`docs/specs/`, `CONTEXT.md`, ADRs) are expected to be dirty. If unrelated files are dirty too, surface them briefly and state they will not be staged or committed by `se-commit`. Do not require a clean tree just to proceed.
 - **Fetch and prune.** Run `git fetch --all --prune`. Do not skip this step even on a clean tree.
-- **Detect the base branch.** Use the preferred base from Phase A/B if still valid. Otherwise check whether `origin/develop` exists (`git ls-remote --exit-code origin develop`). If it exists use `origin/develop`; if not, fall back to `origin/main`.
+- **Detect the base branch.** Use the preferred base from Phase A/B if still valid. Otherwise check whether `origin/develop` exists (`git ls-remote --exit-code --heads origin develop`). If it exists use `origin/develop`; if not, fall back to `origin/main`.
 - **Switch or create the branch.** If a local branch named `<confirmed-name>` already exists, execute `git checkout <confirmed-name>`. Otherwise execute `git checkout -b <confirmed-name> <base>^0` (for example, `git checkout -b intcomp-1234-new-banner origin/develop^0`). The `^0` suffix detaches from the remote-tracking ref so no upstream is set; the upstream is established on first push. Do not set `--track`.
-- **Then write and commit artifacts.** Only after this phase succeeds should `se-discuss` write `docs/specs/`, `CONTEXT.md`, or ADR files and call `se-commit`.
+- **If checkout would overwrite or conflict with any uncommitted change, stop and ask.** Never discard, stash, or rewrite the user's/spec changes silently. Present the conflicting paths and recommend the smallest safe recovery:
+  - If the current HEAD is already the intended base (or the user accepts the base deviation), create the confirmed branch from the current HEAD so the approved uncommitted review artifacts remain in place.
+  - Otherwise, ask the user to resolve the working-tree conflict manually or choose a different branch/base; do not proceed to commit until the confirmed branch contains the approved files.
+- **Then commit artifacts.** The approved `docs/specs/`, `CONTEXT.md`, or ADR files should already exist as uncommitted review artifacts. Only after this phase succeeds should `se-discuss` call `se-commit`.
 
 > Ignoring `.super-exec/` is **not** this gate's job — the SessionStart hook already ensures it is in `.git/info/exclude` (local, uncommitted) every session. Do not edit `.gitignore` here.
 
@@ -82,8 +86,10 @@ Use only when neither (a) nor (b) applies.
 |---|---|
 | "I'll block the first interview question until branch context finishes." | Do not wait. Start Phase A in the background and keep interviewing. |
 | "I'll ask for the ticket before I know what the task is." | Defer ticket prompting to Phase B unless the ticket is needed to understand the first request. |
-| "The user confirmed the branch in Phase B, but I'll ask again after approval." | Do not ask again unless facts changed or branch creation failed. The Phase B confirmation plus spec approval authorizes Phase C. |
-| "I'll write `docs/specs/` before branch creation because approval is likely." | Never write committed artifacts before Phase C succeeds. Keep drafts in memory or `.super-exec/`. |
+| "The user confirmed the branch in Phase B, but I'll ask again after approval." | Do not ask again unless facts changed, branch creation failed, or checkout conflicts. The Phase B confirmation plus spec approval authorizes Phase C. |
+| "I'll hide the spec draft in `.super-exec/` until approval." | Wrong review surface. Write the uncommitted spec in `docs/specs/` so the user can review the actual file; only the commit waits for Phase C. |
+| "There are unrelated dirty files, so I need to clean/stash them before switching." | Do not mutate unrelated work. Surface it, carry it if git allows, and rely on `se-commit` staging isolation so only approved artifact paths are committed. |
+| "Checkout conflicts with dirty files, so I'll stash or overwrite to get unstuck." | Stop and ask. Uncommitted work may belong to the user or be the approved review artifact; never stash, discard, or rewrite it without explicit user direction. |
 | "I'll branch off `main` — it's the safe default." | Auto-detect first. Check whether `origin/develop` exists. Branch off `develop` if it does; fall back to `main` only when `develop` is absent. |
 | "The repo has no skill and I don't see a pattern, so I'll invent something sensible." | No invention. When (a) and (b) are both silent, apply the bundled default convention verbatim — `<ticket-id>-<≤6-word-summary>` or `<type>-<≤6-word-summary>`. |
 | "I'll skip `git fetch --all --prune` — the tree is clean." | Always fetch first. Stale remote-tracking refs can cause the base detection to pick the wrong branch or miss that `develop` has been deleted. |

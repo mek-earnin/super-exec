@@ -57,7 +57,7 @@ flowchart TD
     G3 --> H([📦 Pull request draft])
 ```
 
-During discuss, super-exec starts branch/ticket lookup in the background so the interview does not wait on git or Atlassian. After the WHAT is clear, it asks once for any missing Jira ticket and shows the proposed branch name. No branch is created until you approve the spec; then it creates/switches to the confirmed branch, writes the spec, commits it, and continues into planning.
+During discuss, super-exec starts branch/ticket lookup in the background so the interview does not wait on git or Atlassian. After the WHAT is clear, it asks once for any missing Jira ticket and shows the proposed branch name. It writes the uncommitted spec file for your review. No branch is created and nothing is committed until you approve the spec; then it creates/switches to the confirmed branch, commits the approved artifacts, and continues into planning.
 
 The **discuss → plan** hop is automatic: once you approve the spec, super-exec commits it and continues
 straight into planning in the same session. The only hard boundary is **plan → build** — start `/se-exec`
