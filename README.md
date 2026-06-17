@@ -88,13 +88,14 @@ review is pending.
 
 ## What's in the box
 
-**Three things you invoke** (type `/name`, or just describe the work and the model picks it up):
+**Four things you invoke** (type `/name`, or just describe the work and the model picks it up):
 
 | Tool | What it does | When to use |
 |---|---|---|
 | **`/se-discuss`** | Design session. Interviews you to a shared spec (the WHAT only), with a docs-review checkpoint. | Starting a new feature or changing behavior. |
 | **`/se-plan`** | Plan session. Turns a committed spec into an architecture + verification plan; binds repo skills to tasks. Also re-enters an existing plan. | After a spec is committed, or to re-plan. |
 | **`/se-exec`** | Build session. Runs the execute→verify→review loops task by task, then opens the PR. Resumes from a handoff if context ran out. | After a plan is reviewed. Start in a fresh session. |
+| **`/se-pr-triage`** | Post-PR triage session. One round: triages review comments (Track A, human-gated approval before any reply or fix is pushed) and CI failures (Track B, autonomous investigation and resolution). Run after a PR is open and reviewers or CI have reported. Manual only — wrap in `/loop` for continuous watching. Not auto-chained from `se-pr`. | After a PR is open, when review comments or CI failures need processing. |
 
 **Helpers it runs for you** (you don't invoke these directly):
 

@@ -1,6 +1,6 @@
 ---
 name: using-super-exec
-description: Use when starting any new feature, fix, or task — super-exec orients you on the workflow and its three entrypoint skills.
+description: Use when starting any new feature, fix, or task — super-exec orients you on the workflow and its four entrypoint skills.
 ---
 
 # super-exec
@@ -9,16 +9,17 @@ Complete workflow from vague idea to PR — less baby sitting, enforcing discipl
 
 **Reach for these proactively.** When the user starts feature work — "let's build X", "add Y", "change how Z works" — invoke `se-discuss` rather than diving into code; when a spec is ready, `se-plan`; when a plan is ready, `se-exec`. You don't need the user to name the skill. Match the work to the stage and use it. (Trivial one-line fixes don't need the full workflow — judge when it fits.)
 
-## The three entrypoint skills
+## The four entrypoint skills
 
 super-exec ships as **skills only** — no separate slash commands. Each entrypoint is a skill you
-invoke as `/se-discuss`, `/se-plan`, or `/se-exec` (or that the model auto-invokes when the work
-matches); on entry each writes the `.super-exec/active` session marker that makes the guards live.
-Behavior is identical whether invoked manually or automatically.
+invoke as `/se-discuss`, `/se-plan`, `/se-exec`, or `/se-pr-triage` (or that the model auto-invokes
+when the work matches); on entry each writes the `.super-exec/active` session marker that makes the
+guards live. Behavior is identical whether invoked manually or automatically.
 
 - `/se-discuss` — **Design session.** Discuss a spec from a raw idea or task description. Produces a structured spec document that must be approved before planning. On spec approval, se-discuss **auto-chains into se-plan in the same session** — you do not invoke `/se-plan` by hand.
 - `/se-plan` — **Plan / re-plan / re-entry.** Turn a spec into an architecture + verification plan, or re-enter an in-progress plan mid-session. Must be reviewed before execution. (Entered automatically from se-discuss; manual invocation still works for re-planning.) The **plan → execute boundary stays a hard fresh-session step** — never auto-chained.
 - `/se-exec` — **Build session.** Execute the current plan task by task, with verification checkpoints between tasks. Does not proceed past a failing checkpoint. Two toggles set at entry: *review before each commit?* and *Auto-PR?* — the second is the "human in the loop?" signal. Auto-PR OFF ends with a human work-review and a "create a draft PR?" choice; a "no" ends the session with no PR.
+- `/se-pr-triage` — **Post-PR triage session.** Manual entrypoint; not auto-chained from `se-pr`. Runs one triage round per invocation: Track A triages review comments (bot and human) under a mandatory human approval gate — no reply is posted and no fix is pushed without approval; Track B investigates and resolves CI failures autonomously, with no replies. Wrap in `/loop` for continuous watching.
 
 ## Precedence (if superpowers is also loaded)
 
