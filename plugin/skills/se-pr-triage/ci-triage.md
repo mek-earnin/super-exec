@@ -46,7 +46,7 @@ The failure is treated as flaky. Rerun the CI job exactly once using `gh run rer
 - If the rerun still fails while local continues to pass: the job is stuck or the flakiness is persistent but not locally reproducible. Escalate — record the job as needing human attention in the round report with a note that local passes but CI remains red after one rerun.
 
 **Local run fails:**
-The failure is real. Fix the code by dispatching an implementer subagent (mid tier) with the diagnosis as context, then clear the inner verification loop via `se-verify` and the outer review loop via `se-review`, exactly as a build task in `se-exec`. Once both loops are green, commit via `se-commit` and push. The push triggers CI to rerun.
+The failure is real. Fix the code by dispatching an implementer subagent (mid tier) with the diagnosis as context, then clear the inner verification loop via `se-verify` and the outer review loop via `se-review`, exactly as a build task in `se-exec`. Once both loops are green, commit via `se-commit`, then push the commit to the PR branch via `git push` (the Track B executor subagent performs the push after `se-commit` completes). The push triggers CI to rerun.
 
 - If CI goes green after the push: record verdict `fixed` with links to the pushed commit and the check run.
 - If CI remains red after the fix-and-push attempt: record verdict `escalated` — the failure cannot be made green and needs human attention.
@@ -115,5 +115,6 @@ Escalations are surfaced by the SKILL.md controller in the end-of-round report u
 | Verification (inner loop) | `se-verify` (runner → judge split) |
 | Review (outer loop) | `se-review` |
 | Commit | `se-commit` (runner subagent) |
+| Push fix commit to PR branch | `git push` — performed by the Track B executor subagent (cheap tier) via `Task` tool after `se-commit` completes |
 
 GitHub MCP is the primary tool for all read operations and PR mutations. The two `gh` commands (`gh run rerun --failed`, `gh run view --log-failed`) are used only for the CI run-level operations that MCP does not expose. No other `gh` or raw API calls are introduced.
