@@ -112,3 +112,11 @@ The super-exec guard registers on CC `PreToolUse` for both `Bash` and `Write|Edi
 2. **N3 nudge** (don't write fenced code into a `docs/specs/*.md` spec) is backed by the file-edit hook registration. Cursor exposes **no generic pre-file event**, so N3 is **CC-only** and degrades to skill-prose discipline on Cursor — same posture as N1/N2.
 
 The **B1 hard block** (no commit while `.super-exec/gate-open` exists) fires through `beforeShellExecution` and is enforced on both harnesses.
+
+---
+
+## Host commit policy vs auto-commit
+
+Cursor's default agent policy discourages committing without an explicit, per-action user request ("only create commits when requested by the user; if unclear, ask first; never commit unless the user explicitly asks"). super-exec's auto-commit (review-before-commit **OFF**) is **not** that proactive committing: the user sets the toggle at se-exec entry via a structured question, and **that choice is explicit, standing authorization** to commit each task on inner-loop-green. Treat every per-task commit under OFF as a *user-requested* commit and do not pause to re-ask — pausing here is a defect, not caution.
+
+The host policy still applies in full wherever super-exec has *not* been authorized: when review-before-commit is **ON**, commits wait behind `.super-exec/gate-open` and explicit human approval (the B1 block enforces this). The actual `git commit` also runs in a runner subagent (per `se-commit`), where git work belongs — the controller only decides to dispatch it. This is a prose-level resolution: there is no host hook that *forces* a commit, so the authorization framing is what keeps the controller from babysitting each commit.

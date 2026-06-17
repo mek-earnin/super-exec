@@ -49,7 +49,7 @@ This is a **best-effort** override that wins by **specificity, not volume**: it 
 - **Scope guard.** Each session works only the steps in the current plan. Out-of-scope changes are deferred, not sneaked in.
 - **Reuse before writing.** Search the codebase for existing patterns, utilities, and conventions before adding new ones.
 - **Repo conventions win.** Follow the project's existing style, tooling, and structure — do not impose external preferences.
-- **Commit routinely; pending human review is the only block.** Per-task commits are routine, not session epilogues. The one hard rule: no commit while a human review is pending (`.super-exec/gate-open`). Your real checkpoint is the PR review + manual squash-merge — so "Auto-PR" means *unreviewed-by-a-human-mid-session*, never *merged without review*.
+- **Commit routinely; pending human review is the only block.** Per-task commits are routine, not session epilogues. The one hard rule: no commit while a human review is pending (`.super-exec/gate-open`). When *review before each commit* is OFF, the user set that toggle — that is your standing authorization, so each per-task commit is *user-requested*, not proactive; don't pause for per-commit approval even if a host agent policy nudges you to ask before committing unprompted. Your real checkpoint is the PR review + manual squash-merge — so "Auto-PR" means *unreviewed-by-a-human-mid-session*, never *merged without review*.
 
 ## Staged workflow
 

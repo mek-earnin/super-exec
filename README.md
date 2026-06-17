@@ -60,7 +60,9 @@ flowchart TD
 The **shape → plan** hop is automatic: once you approve the spec, super-exec commits it and continues
 straight into planning in the same session. The only hard boundary is **plan → build** — start `/se-exec`
 in a fresh session. At build entry you set two toggles: *review before each commit?* and *Auto-PR?*
-The second is the "human in the loop?" switch — Auto-PR **ON** skips the
+With *review before each commit?* **OFF**, that one choice is your standing go-ahead — the agent
+commits each task automatically without stopping to ask. Pending human reviews still block commits
+until you approve. The second is the "human in the loop?" switch — Auto-PR **ON** skips the
 final review and opens the PR automatically; **OFF** stops for your work-review and asks whether to open
 a draft PR (a "no" ends the session with no PR).
 
