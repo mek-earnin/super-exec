@@ -137,7 +137,7 @@ if [ -f "${SUPER_EXEC_DIR}/active" ]; then
   fi
 fi
 
-session_context="<super-exec>\nYou have the super-exec workflow plugin loaded.\n\n**Below is the full content of your 'super-exec:using-super-exec' skill — your orientation to the gate-driven workflow:**\n\n${using_super_exec_escaped}${resume_note}\n</super-exec>"
+session_context="<super-exec>\nYou have the super-exec workflow plugin loaded.\n\n**Below is the full content of your 'super-exec:using-super-exec' skill — your orientation to the workflow:**\n\n${using_super_exec_escaped}${resume_note}\n</super-exec>"
 
 # Output context injection as JSON.
 # Cursor hooks expect additional_context (snake_case).

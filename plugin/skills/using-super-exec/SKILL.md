@@ -1,11 +1,11 @@
 ---
 name: using-super-exec
-description: Use when starting any new feature, fix, or task — super-exec orients you on the gate-driven workflow and its three entrypoint skills.
+description: Use when starting any new feature, fix, or task — super-exec orients you on the workflow and its three entrypoint skills.
 ---
 
 # super-exec
 
-super-exec is a gate-driven `spec → plan → execute → verify → review → PR` workflow plugin for Claude Code. It enforces discipline at every stage so sessions produce shippable work, not half-finished attempts.
+Complete workflow from vague idea to PR — less baby sitting, enforcing discipline at every stage, adapt to your repo convention. super-exec runs `spec → plan → execute → verify → review → PR` so sessions produce shippable work, not half-finished attempts.
 
 **Reach for these proactively.** When the user starts feature work — "let's build X", "add Y", "change how Z works" — invoke `se-shape` rather than diving into code; when a spec is ready, `se-plan`; when a plan is ready, `se-exec`. You don't need the user to name the skill. Match the work to the stage and use it. (Trivial one-line fixes don't need the full workflow — judge when it fits.)
 
@@ -16,9 +16,9 @@ invoke as `/se-shape`, `/se-plan`, or `/se-exec` (or that the model auto-invokes
 matches); on entry each writes the `.super-exec/active` session marker that makes the guards live.
 Behavior is identical whether invoked manually or automatically.
 
-- `/se-shape` — **Design session.** Shape a spec from a raw idea or task description. Produces a structured spec document that gates entry to planning. On spec approval, se-shape **auto-chains into se-plan in the same session** — you do not invoke `/se-plan` by hand.
-- `/se-plan` — **Plan / re-plan / re-entry.** Turn a spec into an architecture + verification plan, or re-enter an in-progress plan mid-session. Gates entry to execution. (Entered automatically from se-shape; manual invocation still works for re-planning.) The **plan → execute boundary stays a hard fresh-session step** — never auto-chained.
-- `/se-exec` — **Build session.** Execute the current plan task by task, with verification checkpoints between tasks. Does not proceed past a failing gate. Two toggles set at entry: *review before each commit?* and *Auto-PR?* — the second is the "human in the loop?" signal. Auto-PR OFF ends with a human work-review and a "create a draft PR?" choice; a "no" ends the session with no PR.
+- `/se-shape` — **Design session.** Shape a spec from a raw idea or task description. Produces a structured spec document that must be approved before planning. On spec approval, se-shape **auto-chains into se-plan in the same session** — you do not invoke `/se-plan` by hand.
+- `/se-plan` — **Plan / re-plan / re-entry.** Turn a spec into an architecture + verification plan, or re-enter an in-progress plan mid-session. Must be reviewed before execution. (Entered automatically from se-shape; manual invocation still works for re-planning.) The **plan → execute boundary stays a hard fresh-session step** — never auto-chained.
+- `/se-exec` — **Build session.** Execute the current plan task by task, with verification checkpoints between tasks. Does not proceed past a failing checkpoint. Two toggles set at entry: *review before each commit?* and *Auto-PR?* — the second is the "human in the loop?" signal. Auto-PR OFF ends with a human work-review and a "create a draft PR?" choice; a "no" ends the session with no PR.
 
 ## Precedence (if superpowers is also loaded)
 
@@ -49,11 +49,11 @@ This is a **best-effort** override that wins by **specificity, not volume**: it 
 - **Scope guard.** Each session works only the steps in the current plan. Out-of-scope changes are deferred, not sneaked in.
 - **Reuse before writing.** Search the codebase for existing patterns, utilities, and conventions before adding new ones.
 - **Repo conventions win.** Follow the project's existing style, tooling, and structure — do not impose external preferences.
-- **Commit routinely; the review gate is the only block.** Per-task commits are routine, not session epilogues. The one hard rule: no commit while a human-review gate is open (`.super-exec/gate-open`). Your real gate is the PR review + manual squash-merge — so "Auto-PR" means *unreviewed-by-a-human-mid-session*, never *merged without review*.
+- **Commit routinely; pending human review is the only block.** Per-task commits are routine, not session epilogues. The one hard rule: no commit while a human review is pending (`.super-exec/gate-open`). Your real checkpoint is the PR review + manual squash-merge — so "Auto-PR" means *unreviewed-by-a-human-mid-session*, never *merged without review*.
 
-## Workflow is gate-driven
+## Staged workflow
 
-Each stage produces an artifact. The next stage checks that artifact before proceeding. A stage cannot be skipped. If a gate fails, the workflow returns to the previous stage rather than continuing.
+Each stage produces an artifact. The next stage checks that artifact before proceeding. A stage cannot be skipped. If a checkpoint fails, the workflow returns to the previous stage rather than continuing.
 
 ## Authoring & cross-harness note
 

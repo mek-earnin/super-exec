@@ -1,12 +1,12 @@
 # super-exec
 
-A gate-driven development workflow for Claude Code (and Cursor), shipped as a plugin. It carries a
-feature from **shared understanding → spec → plan → build → verify → review → PR**, while enforcing
-the discipline you'd otherwise correct by hand: delegate heavy work to subagents, verify before
-claiming done, stay in scope, reuse before writing, respect each repo's own conventions, and never
-commit while a human-review gate is open.
+Complete workflow from vague idea to PR — less baby sitting, enforcing discipline at every stage,
+adapt to your repo convention. Shipped as a plugin for Claude Code (and Cursor). It carries a feature
+from **shared understanding → spec → plan → build → verify → review → PR**, while enforcing the
+discipline you'd otherwise correct by hand: delegate heavy work to subagents, verify before claiming
+done, stay in scope, reuse before writing, and respect each repo's own conventions.
 
-You stay in control at every gate. super-exec does the legwork in between.
+You stay in control at every checkpoint. super-exec does the legwork in between.
 
 ---
 
@@ -74,11 +74,11 @@ a draft PR (a "no" ends the session with no PR).
 | Confirm the ticket / branch | Binds repo skills to tasks (reuse over hand-rolling) |
 | **Review + approve** the spec & plan | Commits the spec; implements each task in subagents |
 | Set 2 toggles once (review before each commit? Auto-PR?) | Verifies with real evidence (runner runs it, a strong model judges) |
-| **Review** the work at the final gate (Auto-PR OFF) | Reviews its own code, fixes, commits, then opens the PR draft |
+| **Review** the work at the final checkpoint (Auto-PR OFF) | Reviews its own code, fixes, commits, then opens the PR draft |
 
 The heavy, context-burning work (builds, tests, searches, reviews) runs in throwaway subagents — your
-session stays lean. Nothing claims "done" without shown evidence, and nothing commits while a review
-gate is open.
+session stays lean. Nothing claims "done" without shown evidence, and nothing commits while a human
+review is pending.
 
 ---
 
@@ -88,7 +88,7 @@ gate is open.
 
 | Tool | What it does | When to use |
 |---|---|---|
-| **`/se-shape`** | Design session. Interviews you to a shared spec (the WHAT only), behind a docs-review gate. | Starting a new feature or changing behavior. |
+| **`/se-shape`** | Design session. Interviews you to a shared spec (the WHAT only), with a docs-review checkpoint. | Starting a new feature or changing behavior. |
 | **`/se-plan`** | Plan session. Turns a committed spec into an architecture + verification plan; binds repo skills to tasks. Also re-enters an existing plan. | After a spec is committed, or to re-plan. |
 | **`/se-exec`** | Build session. Runs the execute→verify→review loops task by task, then opens the PR. Resumes from a handoff if context ran out. | After a plan is reviewed. Start in a fresh session. |
 
@@ -97,8 +97,8 @@ gate is open.
 | Skill | Role |
 |---|---|
 | `se-verify` | Inner loop — runs the baseline + task verification and judges the evidence against spec + plan. |
-| `se-review` | Outer loop — arch-gate → deep review (data-flow → reuse → consistency) → severity-tagged findings, with a realism filter. |
-| `se-pr` | PR creation only (the final review gate lives in se-exec). Delegates to the repo's `create-pr` skill, or mirrors `pull_request_template.md`. |
+| `se-review` | Outer loop — architecture review → deep review (data-flow → reuse → consistency) → severity-tagged findings, with a realism filter. |
+| `se-pr` | PR creation only (the final review checkpoint lives in se-exec). Delegates to the repo's `create-pr` skill, or mirrors `pull_request_template.md`. |
 | `se-handoff` | Writes a resume handoff when the build session approaches its context limit. |
 
 Each skill keeps its bulky bits in sibling files it reads on demand — `branch-gate`, `worktree`, and the
@@ -120,7 +120,7 @@ repo with opinions overrides them, every time. Drop-in, no configuration.
 
 | Artifact | Location | Committed? |
 |---|---|---|
-| Spec | `docs/specs/<feature>.md` | yes (you commit it at the gate) |
+| Spec | `docs/specs/<feature>.md` | yes (you commit it at spec approval) |
 | ADR / glossary | `docs/adr/…`, `CONTEXT.md` | yes, sparingly |
 | Plan / handoff | `.super-exec/<feature>/<date>-<plan>/` | no — local, gitignored |
 
