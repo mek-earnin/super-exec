@@ -24,5 +24,13 @@ own verification step. No copy-paste code. No file manifests.>
 
 ## Verification
 <Baseline commands (exact). Task-specific checks. Runner/judge split.
-Evidence format expected from the runner.>
+Evidence format expected from the runner.
+
+### Browser/E2E Preflight (required when applicable)
+- dev-server-skill: <repo skill name/path, or `none`>
+- start-command: <skill invocation or fallback command>
+- readiness-signal: <URL/port/log line and timeout>
+- test-command: <playwright/e2e/browser command>
+- teardown-rule: <reuse existing server, or stop PID started by runner>
+>
 ```

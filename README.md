@@ -122,6 +122,12 @@ own skill first** (e.g. `git-new-branch`, `git-commit-message`, `create-pr`), th
 pattern, then its own built-in default. It ships complete defaults so it works in a bare repo — but a
 repo with opinions overrides them, every time. Drop-in, no configuration.
 
+For playwright, e2e, or browser verification, the verifier scans the target repo's local skills,
+uses the repo's local dev-server skill when present (or the plan's fallback command when absent),
+starts or confirms the server, waits for readiness, and only then runs the browser command. If no
+server startup path is known, browser/e2e verification blocks instead of pretending evidence exists.
+The evidence includes both server readiness and browser results.
+
 ---
 
 ## Where things live
