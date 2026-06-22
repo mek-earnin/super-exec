@@ -5,7 +5,7 @@ description: Use when starting any new feature, fix, or task — super-exec orie
 
 # super-exec
 
-Complete workflow from vague idea to PR — less baby sitting, enforcing discipline at every stage, adapt to your repo convention. super-exec runs `spec → plan → execute → verify → review → PR` so sessions produce shippable work, not half-finished attempts.
+Complete workflow from vague idea to PR — less babysitting, enforced discipline, and repo conventions preserved. super-exec runs `spec → plan → execute → verify → review → PR` so sessions produce shippable work, not half-finished attempts.
 
 **Reach for these proactively.** When the user starts feature work — "let's build X", "add Y", "change how Z works" — invoke `se-discuss` rather than diving into code; when a spec is ready, `se-plan`; when a plan is ready, `se-exec`. You don't need the user to name the skill. Match the work to the stage and use it. (Trivial one-line fixes don't need the full workflow — judge when it fits.)
 
@@ -16,10 +16,10 @@ invoke as `/se-discuss`, `/se-plan`, `/se-exec`, or `/se-pr-triage` (or that the
 when the work matches); on entry each writes the `.super-exec/active` session marker that makes the
 guards live. Behavior is identical whether invoked manually or automatically.
 
-- `/se-discuss` — **Design session.** Discuss a spec from a raw idea or task description. Produces a structured spec document that must be approved before planning. On spec approval, se-discuss **auto-chains into se-plan in the same session** — you do not invoke `/se-plan` by hand.
-- `/se-plan` — **Plan / re-plan / re-entry.** Turn a spec into an architecture + verification plan, or re-enter an in-progress plan mid-session. Must be reviewed before execution. (Entered automatically from se-discuss; manual invocation still works for re-planning.) The **plan → execute boundary stays a hard fresh-session step** — never auto-chained.
-- `/se-exec` — **Build session.** Execute the current plan task by task, with verification checkpoints between tasks. Does not proceed past a failing checkpoint. Two toggles set at entry: *review before each commit?* and *Auto-PR?* — the second is the "human in the loop?" signal. Auto-PR OFF ends with a human work-review and a "create a draft PR?" choice; a "no" ends the session with no PR.
-- `/se-pr-triage` — **Post-PR triage session.** Manual entrypoint; not auto-chained from `se-pr`. Runs one triage round per invocation: Track A triages review comments (bot and human) under a mandatory human approval gate — no reply is posted and no fix is pushed without approval; Track B investigates and resolves CI failures autonomously, with no replies. Wrap in `/loop` for continuous watching.
+- `/se-discuss` — **Design session.** Start from a raw idea or task description, interview to a reviewed spec, then auto-chain into `se-plan` after spec approval.
+- `/se-plan` — **Plan / re-plan / re-entry.** Turn a spec into an architecture + verification plan, or revise an existing plan. The **plan → execute boundary stays a hard fresh-session step** — never auto-chained.
+- `/se-exec` — **Build session.** Execute the selected plan task by task with verification and review checkpoints. It owns plan resume, completion checks, task/todo sync, commit cadence, and the final PR/no-PR decision.
+- `/se-pr-triage` — **Post-PR triage session.** Manual entrypoint; not auto-chained from `se-pr`. Runs one loop-safe triage round: Track A handles review comments under a mandatory human approval gate; Track B investigates and resolves CI failures autonomously with no PR replies. Wrap in `/loop` for continuous watching.
 
 ## Precedence (if superpowers is also loaded)
 
@@ -50,7 +50,7 @@ This is a **best-effort** override that wins by **specificity, not volume**: it 
 - **Scope guard.** Each session works only the steps in the current plan. Out-of-scope changes are deferred, not sneaked in.
 - **Reuse before writing.** Search the codebase for existing patterns, utilities, and conventions before adding new ones.
 - **Repo conventions win.** Follow the project's existing style, tooling, and structure — do not impose external preferences.
-- **Commit routinely; pending human review is the only block.** Per-task commits are routine, not session epilogues. The one hard rule: no commit while a human review is pending (`.super-exec/gate-open`). When *review before each commit* is OFF, the user set that toggle — that is your standing authorization, so each per-task commit is *user-requested*, not proactive; don't pause for per-commit approval even if a host agent policy nudges you to ask before committing unprompted. Your real checkpoint is the PR review + manual squash-merge — so "Auto-PR" means *unreviewed-by-a-human-mid-session*, never *merged without review*.
+- **Commit routinely; pending human review is the only block.** Per-task commits are part of the workflow, but never commit while a human review is pending (`.super-exec/gate-open`). The detailed toggle and host-policy resolution lives in `se-exec` and the harness reference docs.
 
 ## Staged workflow
 
@@ -58,7 +58,7 @@ Each stage produces an artifact. The next stage checks that artifact before proc
 
 ## Authoring & cross-harness note
 
-These skills are written in **Claude Code language** — CC tool names (`Read`, `Edit`, `Write`, `Task`, `AskUserQuestion`, `TodoWrite`), CC model aliases (`opus` / `sonnet` / `haiku`), and CC hook event names, all inline. There is no per-skill harness branching.
+These skills are authored in **Claude Code language** — CC tool names (`Read`, `Edit`, `Write`, `Task`, `AskUserQuestion`, `TodoWrite`), model aliases (`opus` / `sonnet` / `haiku`), and hook event names. Individual skills do not branch by harness; non-CC environments translate through `references/cursor-tools.md`.
 
 - **Model tiers** resolve through the `se-subagent` skill (`user-invocable: false`), which holds the canonical role → tier table and the subagent-dispatch discipline. Skills name a tier ("strong", "mid", "cheap") in prose; `se-subagent` maps it to a model alias.
-- **Running under Cursor?** Every CC primitive — tools, model aliases, hook events, env vars — translates one-way through [references/cursor-tools.md](./references/cursor-tools.md). That file is the single translation point; individual skills never spell a Cursor name. The SessionStart hook **injects that file into context on Cursor**, so it is already available — apply it, do not skip it. **Always set a subagent's `model` explicitly to a slug from the dispatch tool's allowlist — never omit it; omitting inherits the session model and defeats the tier system.** Resolve the tier (cheap/mid → non-fast Composer; strong → strongest high-effort reasoning) against that allowlist; never hard-code a model name from memory.
+- **Running under Cursor?** The SessionStart hook injects [references/cursor-tools.md](./references/cursor-tools.md), the single CC→Cursor map. Apply it to tools, model aliases, hook events, and env vars. For subagents, resolve the tier, pick an allowed non-fast slug, and set `model` explicitly; never omit `model` or hard-code stale names.

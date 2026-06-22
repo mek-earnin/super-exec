@@ -1,27 +1,20 @@
-# Spec Template
-
-Write the spec file using exactly this structure. Sections must appear in this order. No additional sections.
-
-```markdown
 # <Feature>
-> Ticket: INTCOMP-#### | NO_TICKET  ·  Status: active
+> Ticket: <TICKET-ID | NO_TICKET>  ·  Status: <draft | active | superseded>
 
 ## Problem / Why
+<Problem statement.>
 
 ## Goals
+<Goals.>
 
 ## Non-goals (out of scope)
+<Out-of-scope items.>
 
 ## Behavior / Requirements
-<!-- Acceptance criteria only. No HOW — no architecture, no file layout, no tech choices. -->
+<Acceptance criteria.>
 
 ## Domain terms
-<!-- Entries here are mirrored to CONTEXT.md -->
+<Domain terms.>
 
 ## Decisions
-<!-- Hard, surprising, trade-off decisions only. Others go to ADRs in docs/adr/. -->
-```
-
-The **Behavior / Requirements** section contains acceptance criteria with NO HOW. If a requirement implies an implementation (e.g., "use a queue"), extract the underlying behavior ("retries must be durable across process restarts") and state that instead. Architecture and implementation details belong to se-plan.
-
-Use `NO_TICKET` only when the user confirms there is no Jira ticket for the task.
+<Decisions.>

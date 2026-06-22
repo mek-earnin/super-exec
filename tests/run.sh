@@ -458,10 +458,8 @@ echo "Check 6: Auto-commit authorization framing"
 # Each entry: <relative path>|||<case-insensitive fixed phrase that must exist>
 framing_sites=(
   "plugin/skills/se-exec/SKILL.md|||standing authorization"
-  "plugin/skills/using-super-exec/SKILL.md|||standing authorization"
   "plugin/skills/using-super-exec/references/cursor-tools.md|||standing authorization"
   "docs/specs/0001-core-workflow.md|||standing authorization"
-  "README.md|||standing go-ahead"
 )
 
 for entry in "${framing_sites[@]}"; do
@@ -577,6 +575,65 @@ else
     fail "Cursor payload misrouted exclude (workspace=${in_user:-0} pwd=${in_cwd:-0}; expected 1/0)"
   fi
 
+  # Resume detection should prefer the active_plan recorded in .super-exec/active
+  # over the newest plan on disk. This is what lets the recorded plan remain the
+  # build target even when other local plans exist.
+  markerrepo="${ttmp}/marker-repo"
+  mkdir -p "$markerrepo/.super-exec/marker-feature/2026-06-22-marker-plan" \
+           "$markerrepo/.super-exec/latest-feature/2026-06-22-latest-plan"
+  ( cd "$markerrepo" && git init -q ) 2>/dev/null || true
+  marker_plan="${markerrepo}/.super-exec/marker-feature/2026-06-22-marker-plan/plan.md"
+  latest_plan="${markerrepo}/.super-exec/latest-feature/2026-06-22-latest-plan/plan.md"
+  printf '# Marker Plan\n' > "$marker_plan"
+  printf '# Latest Plan\n' > "$latest_plan"
+  touch -t 202606220900 "$marker_plan" 2>/dev/null || true
+  touch -t 202606221000 "$latest_plan" 2>/dev/null || true
+  printf 'phase: exec\nactive_plan: %s\n' "$marker_plan" > "${markerrepo}/.super-exec/active"
+  marker_output=$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
+    CLAUDE_PROJECT_DIR="$markerrepo" CLAUDE_PLUGIN_ROOT="${REPO_ROOT}/plugin" \
+    "$HOOK" 2>/dev/null </dev/null || true)
+  if printf '%s' "$marker_output" | grep -q 'marker-feature' \
+     && printf '%s' "$marker_output" | grep -q '2026-06-22-marker-plan' \
+     && ! printf '%s' "$marker_output" | grep -q 'latest-feature'; then
+    pass "SessionStart resume uses active_plan marker before latest-plan discovery"
+  else
+    fail "SessionStart ignored active_plan marker when newer plan existed"
+  fi
+
+  # If the active plan frontmatter says status: completed, the orientation note
+  # must not call it in-progress. se-exec remains the authority on whether to
+  # resume or stop, but the hook should not mislabel cheap metadata it can parse.
+  completedrepo="${ttmp}/completed-marker-repo"
+  mkdir -p "$completedrepo/.super-exec/completed-feature/2026-06-22-completed-plan"
+  ( cd "$completedrepo" && git init -q ) 2>/dev/null || true
+  completed_plan="${completedrepo}/.super-exec/completed-feature/2026-06-22-completed-plan/plan.md"
+  printf '%s\n' '---' 'title: Completed Plan' 'status: completed' '---' '# Completed Plan' > "$completed_plan"
+  printf 'phase: exec\nactive_plan: %s\n' "$completed_plan" > "${completedrepo}/.super-exec/active"
+  completed_output=$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
+    CLAUDE_PROJECT_DIR="$completedrepo" CLAUDE_PLUGIN_ROOT="${REPO_ROOT}/plugin" \
+    "$HOOK" 2>/dev/null </dev/null || true)
+  if printf '%s' "$completed_output" | grep -q 'Completed plan:' \
+     && ! printf '%s' "$completed_output" | grep -q 'In-progress plan:'; then
+    pass "SessionStart labels completed active_plan without saying in-progress"
+  else
+    fail "SessionStart mislabels completed active_plan as in-progress"
+  fi
+
+  # Lifecycle comments must not claim the hook clears stale markers. The hook
+  # only surfaces context; driver skills own marker writes/deletes.
+  if grep -qF 'stale-TTL sweep' "$HOOK" 2>/dev/null; then
+    fail "SessionStart lifecycle comments still mention a stale-TTL sweep"
+  else
+    pass "SessionStart lifecycle comments do not mention stale-TTL sweep"
+  fi
+
+  if grep -qF 'NEVER auto-deletes' "$HOOK" 2>/dev/null \
+     && grep -qF 'Never writes, moves, or deletes any .super-exec/ marker' "$HOOK" 2>/dev/null; then
+    pass "SessionStart documents read-only marker behavior"
+  else
+    fail "SessionStart must document that it never auto-deletes markers"
+  fi
+
   rm -rf "$ttmp"
 fi
 
@@ -637,7 +694,6 @@ spec_convention_sites=(
   "plugin/skills/se-plan/SKILL.md|||docs/specs/NNNN-<feature>.md"
   "plugin/skills/se-plan/plan-template.md|||docs/specs/NNNN-<feature>.md"
   "docs/specs/0001-core-workflow.md|||docs/specs/NNNN-<feature>.md"
-  "README.md|||docs/specs/NNNN-<feature>.md"
   "docs/adr/0002-local-only-plans-specs-are-the-shared-contract.md|||docs/specs/NNNN-<feature>.md"
 )
 
@@ -647,12 +703,506 @@ for entry in "${spec_convention_sites[@]}"; do
   file="${REPO_ROOT}/${rel}"
   if [ ! -f "$file" ]; then
     fail "spec convention: file not found: ${rel}"
-  elif grep -qF "$phrase" "$file" 2>/dev/null; then
+  elif grep -qF -- "$phrase" "$file" 2>/dev/null; then
     pass "spec convention present in ${rel} (\"${phrase}\")"
   else
     fail "spec convention missing in ${rel}: expected phrase \"${phrase}\""
   fi
 done
+
+# ---------------------------------------------------------------------------
+# Check 9 — Plan frontmatter status contract
+# ---------------------------------------------------------------------------
+echo ""
+echo "Check 9: Plan frontmatter status contract"
+
+# Plans carry local execution metadata in YAML frontmatter. The branch recorded
+# there is the build-session source of truth, and status uses the lowercase
+# enum pending | in_progress | completed.
+plan_frontmatter_sites=(
+  "plugin/skills/se-plan/plan-template.md|||title: <Plan title>"
+  "plugin/skills/se-plan/plan-template.md|||feature: <feature slug>"
+  "plugin/skills/se-plan/plan-template.md|||branch: <confirmed branch name>"
+  "plugin/skills/se-plan/plan-template.md|||status: pending"
+  "plugin/skills/se-plan/SKILL.md|||status: \`pending\`"
+  "plugin/skills/se-exec/SKILL.md|||verify the current git branch matches \`branch\`"
+  "plugin/skills/se-exec/SKILL.md|||update \`status\` from \`pending\` to \`in_progress\`"
+  "plugin/skills/se-exec/SKILL.md|||update \`status\` to \`completed\`"
+  "docs/specs/0001-core-workflow.md|||plan frontmatter"
+)
+
+for entry in "${plan_frontmatter_sites[@]}"; do
+  rel="${entry%%|||*}"
+  phrase="${entry##*|||}"
+  file="${REPO_ROOT}/${rel}"
+  if [ ! -f "$file" ]; then
+    fail "plan frontmatter: file not found: ${rel}"
+  elif grep -qF -- "$phrase" "$file" 2>/dev/null; then
+    pass "plan frontmatter contract present in ${rel} (\"${phrase}\")"
+  else
+    fail "plan frontmatter contract missing in ${rel}: expected phrase \"${phrase}\""
+  fi
+done
+
+# Guard against the old plan status enum returning at the canonical contract
+# sites. "Completed Tasks" in handoff templates is a section label, not status.
+old_status_output="$(mktemp)"
+if REPO_ROOT="$REPO_ROOT" node >"$old_status_output" 2>/dev/null <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const repoRoot = process.env.REPO_ROOT;
+const files = [
+  'plugin/skills/se-plan/plan-template.md',
+  'plugin/skills/se-plan/SKILL.md',
+  'plugin/skills/se-exec/SKILL.md',
+  'docs/specs/0001-core-workflow.md',
+];
+const old = /\b(ToDo|InProgress)\b|status:\s*ToDo|status`\s+to\s+`Completed`|`Completed`/;
+const hits = [];
+for (const rel of files) {
+  const content = fs.readFileSync(path.join(repoRoot, rel), 'utf8');
+  if (old.test(content)) hits.push(rel);
+}
+process.stdout.write(hits.length ? hits.join('\n') : 'ok');
+NODE
+then
+  old_status_result="$(<"$old_status_output")"
+else
+  old_status_result="ERROR"
+fi
+rm -f "$old_status_output"
+if [ "$old_status_result" = "ok" ]; then
+  pass "old plan status enum is absent from contract sites"
+else
+  fail "old plan status enum found in contract sites:"
+  echo "$old_status_result" | sed 's/^/    /'
+fi
+
+# se-exec must not clobber an approved/resume plan pointer during activation.
+activation_contract_sites=(
+  "plugin/skills/se-exec/SKILL.md|||preserve any existing \`active_plan\`"
+  "plugin/skills/se-exec/SKILL.md|||preserve \`branch\` if present"
+  "docs/specs/0001-core-workflow.md|||preserving any existing \`active_plan\`"
+)
+
+for entry in "${activation_contract_sites[@]}"; do
+  rel="${entry%%|||*}"
+  phrase="${entry##*|||}"
+  file="${REPO_ROOT}/${rel}"
+  if [ ! -f "$file" ]; then
+    fail "se-exec activation contract: file not found: ${rel}"
+  elif grep -qF -- "$phrase" "$file" 2>/dev/null; then
+    pass "se-exec activation preserves marker state in ${rel}"
+  else
+    fail "se-exec activation contract missing in ${rel}: expected phrase \"${phrase}\""
+  fi
+done
+
+# active_plan must be written as soon as plan.md exists, not only after human
+# plan approval. Approval may add approved: metadata and gates the fresh-session
+# handoff, but resume/orientation needs a concrete plan path before approval.
+active_plan_timing_sites=(
+  "plugin/skills/se-plan/SKILL.md|||Immediately after \`plan.md\` is written"
+  "plugin/skills/se-plan/SKILL.md|||approval is not the first time \`active_plan\` is recorded"
+  "docs/specs/0001-core-workflow.md|||then immediately record \`active_plan"
+  "docs/specs/0001-core-workflow.md|||approval is not the first time \`active_plan\` is recorded"
+  "plugin/hooks/session-start|||immediately after plan.md write"
+)
+
+for entry in "${active_plan_timing_sites[@]}"; do
+  rel="${entry%%|||*}"
+  phrase="${entry##*|||}"
+  file="${REPO_ROOT}/${rel}"
+  if [ ! -f "$file" ]; then
+    fail "active_plan timing: file not found: ${rel}"
+  elif grep -qF -- "$phrase" "$file" 2>/dev/null; then
+    pass "active_plan timing contract present in ${rel}"
+  else
+    fail "active_plan timing contract missing in ${rel}: expected phrase \"${phrase}\""
+  fi
+done
+
+active_plan_old_timing_output="$(mktemp)"
+if REPO_ROOT="$REPO_ROOT" node >"$active_plan_old_timing_output" 2>/dev/null <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const repoRoot = process.env.REPO_ROOT;
+const files = [
+  'plugin/skills/se-plan/SKILL.md',
+  'docs/specs/0001-core-workflow.md',
+  'plugin/hooks/session-start',
+];
+const forbidden = [
+  /active_plan after plan approval/i,
+  /adds active_plan after\s+plan approval/i,
+  /after the plan is approved[^.\n]*active_plan/i,
+  /when the plan is approved[^.\n]*active_plan/i,
+  /when approved[^.\n]*active_plan/i,
+];
+const hits = [];
+for (const rel of files) {
+  const content = fs.readFileSync(path.join(repoRoot, rel), 'utf8');
+  if (forbidden.some((re) => re.test(content))) hits.push(rel);
+}
+process.stdout.write(hits.length ? hits.join('\n') : 'ok');
+NODE
+then
+  active_plan_old_timing_result="$(<"$active_plan_old_timing_output")"
+else
+  active_plan_old_timing_result="ERROR"
+fi
+rm -f "$active_plan_old_timing_output"
+if [ "$active_plan_old_timing_result" = "ok" ]; then
+  pass "active_plan is not documented as approval-only"
+else
+  fail "active_plan still appears approval-gated in contract sites:"
+  echo "$active_plan_old_timing_result" | sed 's/^/    /'
+fi
+
+# Completion detection must not treat legacy plans with no checklist as done.
+completion_guard_sites=(
+  "plugin/skills/se-exec/SKILL.md|||Completion guard"
+  "plugin/skills/se-exec/SKILL.md|||checklist exists, has at least one item"
+  "plugin/skills/se-exec/SKILL.md|||frontmatter \`status: completed\`"
+  "plugin/skills/se-exec/SKILL.md|||tell the user the plan is already completed and stop before steps 3-10"
+  "docs/specs/0001-core-workflow.md|||A missing checklist is never treated as completed"
+)
+
+for entry in "${completion_guard_sites[@]}"; do
+  rel="${entry%%|||*}"
+  phrase="${entry##*|||}"
+  file="${REPO_ROOT}/${rel}"
+  if [ ! -f "$file" ]; then
+    fail "completion guard: file not found: ${rel}"
+  elif grep -qF -- "$phrase" "$file" 2>/dev/null; then
+    pass "completion guard contract present in ${rel}"
+  else
+    fail "completion guard missing in ${rel}: expected phrase \"${phrase}\""
+  fi
+done
+
+# The final PR decision item is fixed session bookkeeping, not implementer work.
+final_pr_sites=(
+  "plugin/skills/se-plan/plan-template.md|||- [ ] Final review / PR decision"
+  "plugin/skills/se-plan/SKILL.md|||not an executable task"
+  "plugin/skills/se-exec/SKILL.md|||step 10 only"
+  "docs/specs/0001-core-workflow.md|||not an executable implementation task"
+)
+
+for entry in "${final_pr_sites[@]}"; do
+  rel="${entry%%|||*}"
+  phrase="${entry##*|||}"
+  file="${REPO_ROOT}/${rel}"
+  if [ ! -f "$file" ]; then
+    fail "final PR checklist: file not found: ${rel}"
+  elif grep -qF -- "$phrase" "$file" 2>/dev/null; then
+    pass "final PR checklist contract present in ${rel}"
+  else
+    fail "final PR checklist contract missing in ${rel}: expected phrase \"${phrase}\""
+  fi
+done
+
+# Checklist marking happens after the outer review is clean, not merely after
+# task implementation verifies green.
+post_review_marking_sites=(
+  "plugin/skills/se-exec/SKILL.md|||task is committed and outer-loop-clean"
+  "docs/specs/0001-core-workflow.md|||after the task is committed and outer-loop-clean"
+)
+
+for entry in "${post_review_marking_sites[@]}"; do
+  rel="${entry%%|||*}"
+  phrase="${entry##*|||}"
+  file="${REPO_ROOT}/${rel}"
+  if [ ! -f "$file" ]; then
+    fail "post-review checklist marking: file not found: ${rel}"
+  elif grep -qF "$phrase" "$file" 2>/dev/null; then
+    pass "post-review checklist marking present in ${rel}"
+  else
+    fail "post-review checklist marking missing in ${rel}: expected phrase \"${phrase}\""
+  fi
+done
+
+# Harness-native task/todo tools are operational session state; plan.md is
+# durable resume state. Keep both contract surfaces present.
+task_sync_sites=(
+  "plugin/skills/se-exec/SKILL.md|||TodoWrite"
+  "plugin/skills/se-exec/SKILL.md|||translated equivalent"
+  "plugin/skills/se-exec/SKILL.md|||operational session state"
+  "plugin/skills/se-exec/SKILL.md|||durable local resume state"
+  "plugin/skills/se-exec/SKILL.md|||update the native task/todo tool first"
+  "plugin/skills/using-super-exec/SKILL.md|||Individual skills do not branch by harness"
+  "docs/specs/0001-core-workflow.md|||native task/todo tool is operational session state"
+)
+
+for entry in "${task_sync_sites[@]}"; do
+  rel="${entry%%|||*}"
+  phrase="${entry##*|||}"
+  file="${REPO_ROOT}/${rel}"
+  if [ ! -f "$file" ]; then
+    fail "task sync: file not found: ${rel}"
+  elif grep -qF "$phrase" "$file" 2>/dev/null; then
+    pass "task sync contract present in ${rel} (\"${phrase}\")"
+  else
+    fail "task sync contract missing in ${rel}: expected phrase \"${phrase}\""
+  fi
+done
+
+# Guidance removed from spec-template.md comments must live in se-discuss.
+spec_guidance_sites=(
+  "plugin/skills/se-discuss/SKILL.md|||acceptance criteria with NO HOW"
+  "plugin/skills/se-discuss/SKILL.md|||no instructional comments"
+  "plugin/skills/se-discuss/SKILL.md|||mirrored to \`CONTEXT.md\`"
+  "plugin/skills/se-discuss/SKILL.md|||hard, surprising, trade-off decisions"
+  "plugin/skills/se-discuss/SKILL.md|||docs/adr/"
+)
+
+for entry in "${spec_guidance_sites[@]}"; do
+  rel="${entry%%|||*}"
+  phrase="${entry##*|||}"
+  file="${REPO_ROOT}/${rel}"
+  if [ ! -f "$file" ]; then
+    fail "spec template guidance: file not found: ${rel}"
+  elif grep -qF "$phrase" "$file" 2>/dev/null; then
+    pass "spec template guidance present in ${rel} (\"${phrase}\")"
+  else
+    fail "spec template guidance missing in ${rel}: expected phrase \"${phrase}\""
+  fi
+done
+
+# ---------------------------------------------------------------------------
+# Check 10 — Template artifacts are copy-pasteable
+# ---------------------------------------------------------------------------
+echo ""
+echo "Check 10: Template artifacts are copy-pasteable"
+
+template_purity_output="$(mktemp)"
+if REPO_ROOT="$REPO_ROOT" node >"$template_purity_output" 2>/dev/null <<'NODE'
+const fs = require('fs');
+const path = require('path');
+
+const repoRoot = process.env.REPO_ROOT;
+const templates = [
+  'plugin/skills/se-plan/plan-template.md',
+  'plugin/skills/se-discuss/spec-template.md',
+  'plugin/skills/se-pr/pr-template.md',
+  'plugin/skills/se-handoff/handoff-outline.md',
+];
+
+const forbidden = [
+  { re: /```markdown/i, label: 'fenced markdown wrapper' },
+  { re: /\bWrite the\b/i, label: 'write instructions' },
+  { re: /\bUsed by\b/i, label: 'usage prose' },
+  { re: /\bThe file must contain\b/i, label: 'outline instructions' },
+  { re: /\bfollowing sections\b/i, label: 'section-order prose' },
+  { re: /\bDefault Title Format\b/i, label: 'title-rule prose' },
+  { re: /\bBody Rules\b/i, label: 'body-rule prose' },
+  { re: /\bExamples:\b/i, label: 'example prose' },
+];
+
+const problems = [];
+for (const rel of templates) {
+  const full = path.join(repoRoot, rel);
+  if (!fs.existsSync(full)) {
+    problems.push(`${rel}: missing`);
+    continue;
+  }
+
+  const content = fs.readFileSync(full, 'utf8');
+  const first = content.split(/\r?\n/).find((line) => line.trim()) || '';
+  if (/^#\s+.*\b(Template|Reference|Outline)\b/i.test(first)) {
+    problems.push(`${rel}: meta heading`);
+  }
+  if (/^\s*```/.test(first)) {
+    problems.push(`${rel}: starts with fence`);
+  }
+
+  for (const { re, label } of forbidden) {
+    if (re.test(content)) {
+      problems.push(`${rel}: ${label}`);
+    }
+  }
+}
+
+process.stdout.write(problems.length ? problems.join('\n') : 'ok');
+NODE
+then
+  template_purity_result="$(<"$template_purity_output")"
+else
+  template_purity_result="ERROR"
+fi
+rm -f "$template_purity_output"
+
+if [ "$template_purity_result" = "ok" ]; then
+  pass "plugin template files are pure copy-pasteable artifacts"
+else
+  fail "plugin template files must be artifact-only:"
+  echo "$template_purity_result" | sed 's/^/    /'
+fi
+
+pr_template_exact_output="$(mktemp)"
+if REPO_ROOT="$REPO_ROOT" node >"$pr_template_exact_output" 2>/dev/null <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const repoRoot = process.env.REPO_ROOT;
+const actual = fs.readFileSync(path.join(repoRoot, 'plugin/skills/se-pr/pr-template.md'), 'utf8');
+const expected = `## Jira tickets:
+- <TICKET_ID | NO_TICKET>
+
+## Describe your changes
+-
+`;
+
+process.stdout.write(actual === expected ? 'ok' : `expected:\n${expected}\nactual:\n${actual}`);
+NODE
+then
+  pr_template_exact_result="$(<"$pr_template_exact_output")"
+else
+  pr_template_exact_result="ERROR"
+fi
+rm -f "$pr_template_exact_output"
+
+if [ "$pr_template_exact_result" = "ok" ]; then
+  pass "se-pr built-in fallback template matches expected body"
+else
+  fail "se-pr built-in fallback template drifted:"
+  echo "$pr_template_exact_result" | sed 's/^/    /'
+fi
+
+# ---------------------------------------------------------------------------
+# Check 11 — Core spec stays synced with shipped entrypoints and templates
+# ---------------------------------------------------------------------------
+echo ""
+echo "Check 11: Core spec sync"
+
+core_spec_sites=(
+  "docs/specs/0001-core-workflow.md|||> Ticket: NO_TICKET  ·  Status: active"
+  "docs/specs/0001-core-workflow.md|||four entrypoints"
+  "docs/specs/0001-core-workflow.md|||/se-pr-triage"
+  "docs/specs/0001-core-workflow.md|||se-pr-triage/              # + ci-triage.md; post-PR review/CI triage"
+  "docs/specs/0001-core-workflow.md|||## Data Flow"
+  "docs/specs/0001-core-workflow.md|||### Browser/E2E Preflight"
+  "plugin/skills/using-super-exec/references/cursor-tools.md|||impeccable-critique"
+)
+
+for entry in "${core_spec_sites[@]}"; do
+  rel="${entry%%|||*}"
+  phrase="${entry##*|||}"
+  file="${REPO_ROOT}/${rel}"
+  if [ ! -f "$file" ]; then
+    fail "core spec sync: file not found: ${rel}"
+  elif grep -qF -- "$phrase" "$file" 2>/dev/null; then
+    pass "core spec sync present in ${rel} (\"${phrase}\")"
+  else
+    fail "core spec sync missing in ${rel}: expected phrase \"${phrase}\""
+  fi
+done
+
+core_spec_forbidden_output="$(mktemp)"
+if REPO_ROOT="$REPO_ROOT" node >"$core_spec_forbidden_output" 2>/dev/null <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const repoRoot = process.env.REPO_ROOT;
+const checks = [
+  {
+    rel: 'docs/specs/0001-core-workflow.md',
+    forbidden: [/three entrypoints/i, /build pending/i, /## Data flow\b/, /Status:\s*draft/i, /README.*recommends?.*superpowers/i, /README.*disabl(?:e|ing).*superpowers/i],
+  },
+  {
+    rel: 'docs/adr/0003-skills-only-no-thin-commands.md',
+    forbidden: [/three entrypoints/i, /stale-TTL sweep/i],
+  },
+  {
+    rel: 'docs/adr/0004-superpowers-coinstall-skill-precedence.md',
+    forbidden: [/README.*recommends?.*superpowers/i, /README.*disabl(?:e|ing).*superpowers/i, /static README recommendation/i],
+  },
+];
+const hits = [];
+for (const { rel, forbidden } of checks) {
+  const content = fs.readFileSync(path.join(repoRoot, rel), 'utf8');
+  for (const re of forbidden) {
+    if (re.test(content)) hits.push(`${rel}: ${re}`);
+  }
+}
+process.stdout.write(hits.length ? hits.join('\n') : 'ok');
+NODE
+then
+  core_spec_forbidden_result="$(<"$core_spec_forbidden_output")"
+else
+  core_spec_forbidden_result="ERROR"
+fi
+rm -f "$core_spec_forbidden_output"
+
+if [ "$core_spec_forbidden_result" = "ok" ]; then
+  pass "stale core-spec/ADR wording is absent"
+else
+  fail "stale core-spec/ADR wording remains:"
+  echo "$core_spec_forbidden_result" | sed 's/^/    /'
+fi
+
+# ---------------------------------------------------------------------------
+# Check 12 — README landing-page scope
+# ---------------------------------------------------------------------------
+echo ""
+echo "Check 12: README landing-page scope"
+
+readme_scope_output="$(mktemp)"
+if REPO_ROOT="$REPO_ROOT" node >"$readme_scope_output" 2>/dev/null <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const repoRoot = process.env.REPO_ROOT;
+const rel = 'README.md';
+const content = fs.readFileSync(path.join(repoRoot, rel), 'utf8');
+
+const required = [
+  'discuss -> plan -> exec -> PR / triage',
+  '/se-discuss',
+  '/se-plan',
+  '/se-exec',
+  '/se-pr-triage',
+  'docs/specs/',
+  'docs/specs/0001-core-workflow.md',
+  'plugin/skills/*/SKILL.md',
+];
+
+const forbidden = [
+  /active_plan/i,
+  /standing go-ahead/i,
+  /standing authorization/i,
+  /plan frontmatter/i,
+  /native task\/todo/i,
+  /Missing checklists/i,
+  /after outer review is clean/i,
+  /SessionStart/i,
+  /model slug/i,
+  /review before each commit/i,
+  /pull_request_template/i,
+  /docs\/specs\/NNNN-<feature>\.md/,
+  /\.git\/info\/exclude/i,
+];
+
+const problems = [];
+for (const phrase of required) {
+  if (!content.includes(phrase)) problems.push(`missing required high-level anchor: ${phrase}`);
+}
+for (const re of forbidden) {
+  if (re.test(content)) problems.push(`README contains low-level contract detail: ${re}`);
+}
+
+process.stdout.write(problems.length ? problems.join('\n') : 'ok');
+NODE
+then
+  readme_scope_result="$(<"$readme_scope_output")"
+else
+  readme_scope_result="ERROR"
+fi
+rm -f "$readme_scope_output"
+
+if [ "$readme_scope_result" = "ok" ]; then
+  pass "README stays high-level and points to source-of-truth files"
+else
+  fail "README scope problem:"
+  echo "$readme_scope_result" | sed 's/^/    /'
+fi
 
 # ---------------------------------------------------------------------------
 # Summary

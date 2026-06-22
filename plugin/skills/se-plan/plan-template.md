@@ -1,36 +1,60 @@
-# Plan Template
+---
+title: <Plan title>
+feature: <feature slug>
+branch: <confirmed branch name>
+status: pending
+---
 
-Write the plan file using exactly this structure. Sections must appear in this order. No additional top-level sections.
-
-```markdown
 # <Plan name>
 
+## Execution Checklist
+- [ ] <Task 1 name>
+- [ ] <Task 2 name>
+- [ ] Final review / PR decision
+
 ## Goal
-<1-3 sentences. Link to the spec: `docs/specs/NNNN-<feature>.md`>
+<Plan goal in 1-3 sentences. Spec: `docs/specs/NNNN-<feature>.md`>
 
 ## Architecture
-<Components, responsibilities, data flow — prose + mermaid or ASCII diagrams.
-Folder/file structure as ASCII tree. Signatures or pseudo-code only where they
-clarify architecture — never as implementation scaffolding.>
+<Components and responsibilities.>
+
+<Architecture diagram: mermaid or ASCII.>
+
+<Folder/file structure: ASCII tree.>
+
+<Boundary signatures or pseudo-code.>
 
 ## Data Flow
-<Diagram (mermaid or ASCII) showing how data moves through the system for the
-primary happy path and the main error path.>
+<Happy-path data flow: mermaid or ASCII.>
+
+<Main error-path data flow: mermaid or ASCII.>
 
 ## Tasks
-<Overview-level tasks. Each task states: what to accomplish, which repo skills
-to invoke (MUST invoke `<skill-name>` before ...), dependency notes, and its
-own verification step. No copy-paste code. No file manifests.>
+### <Task 1 name>
+- Outcome: <What this task accomplishes and why>
+- Skills: <Repo skills to invoke, or `none`>
+- Dependencies: <Dependency notes, or `none`>
+- Verification: <Task-specific check and expected evidence>
+
+### <Task 2 name>
+- Outcome: <What this task accomplishes and why>
+- Skills: <Repo skills to invoke, or `none`>
+- Dependencies: <Dependency notes, or `none`>
+- Verification: <Task-specific check and expected evidence>
 
 ## Verification
-<Baseline commands (exact). Task-specific checks. Runner/judge split.
-Evidence format expected from the runner.
+<Baseline commands.>
 
-### Browser/E2E Preflight (required when applicable)
+<Task-specific checks.>
+
+<Runner evidence format.>
+
+<Judge criteria.>
+
+### Browser/E2E Preflight
+- applicability: <required | not applicable>
 - dev-server-skill: <repo skill name/path, or `none`>
 - start-command: <skill invocation or fallback command>
 - readiness-signal: <URL/port/log line and timeout>
 - test-command: <playwright/e2e/browser command>
 - teardown-rule: <reuse existing server, or stop PID started by runner>
->
-```

@@ -1,6 +1,6 @@
 # Core workflow
 
-> Status: draft · Scope: shared (cross-repo) · Harnesses: Claude Code (primary), Cursor
+> Ticket: NO_TICKET  ·  Status: active
 
 A guided, gate-driven development workflow distributed as a Claude Code plugin. It carries a feature from shared understanding through to a pull request while enforcing the discipline the author repeatedly had to correct by hand: delegate heavy work to subagents, verify before claiming done, stay in scope, reuse before writing, respect each repo's own conventions, never commit while a human-review gate is open, and never reply to a PR comment without an approved draft. The spec is the contract: implementation must match it, and the human's real gate is the PR review + manual squash-merge — every change (code and any spec amendment) lands there for review before it merges.
 
@@ -18,7 +18,7 @@ Manual babysitting. Across ~2,627 past prompts in 7 EarnIn repos, the same corre
 
 ## Non-goals (out of scope for v1)
 
-- Post-PR bot-comment triage (CodeRabbit/Bugbot). Deferred to a separate `se-pr-triage` skill (see Fast-follow).
+- Continuous post-PR polling as a built-in daemon. `se-pr-triage` provides one explicit triage round; `/loop` can wrap it for watching.
 - Project-specific configuration layer (per-repo baked-in settings). Shared scope first; the tool detects per-repo conventions at runtime.
 - Reinventing branch/commit/PR/dev-server/version logic. These are delegated to repo skills.
 - Forced TDD everywhere, or plans containing copy-paste-ready code.
@@ -27,7 +27,7 @@ Manual babysitting. Across ~2,627 past prompts in 7 EarnIn repos, the same corre
 
 Two sessions, one hard boundary at plan → execute.
 
-super-exec ships as **skills only** — the three entrypoints (`se-discuss`, `se-plan`, `se-exec`) are skills invoked as `/se-discuss` etc. (or auto-invoked by the model when the work matches); there is no separate slash-command layer. Each writes the `.super-exec/active` session marker on entry, so the behavior is identical whether invoked manually or automatically (see ADR 0003).
+super-exec ships as **skills only** — the four entrypoints (`se-discuss`, `se-plan`, `se-exec`, `se-pr-triage`) are skills invoked as `/se-discuss`, `/se-plan`, `/se-exec`, and `/se-pr-triage` (or auto-invoked by the model when the work matches); there is no separate slash-command layer. Each writes the `.super-exec/active` session marker on entry, so the behavior is identical whether invoked manually or automatically (see ADR 0003).
 
 ### Session 1 — design
 
@@ -38,7 +38,7 @@ super-exec ships as **skills only** — the three entrypoints (`se-discuss`, `se
 3. **Ticket + branch confirmation.** After the last WHAT question and before writing the spec file, resolve traceability. If no ticket was provided or inferred, ask once: "Do you have a Jira ticket for this task?" If the user provides a ticket and Atlassian MCP is available, fetch the ticket data and derive the branch name from the repo convention plus the ticket title/final feature slug. If there is no ticket, use `NO_TICKET` in the spec and derive a no-ticket branch from the final feature slug. Present the ticket value and proposed branch name once for confirmation or edit.
 4. **Write review artifacts.** Write/update the uncommitted spec in `docs/specs/`, update `CONTEXT.md` when new terms need review, and offer/write an ADR only when the decision is hard to reverse + surprising + a real trade-off. The written files are the review artifacts; do not commit them before approval.
 5. **Spec-approval gate, then branch + commit.** Present the finalized spec file and ask the user to review — "Everything look good? Proceed to planning?". A change request loops back to editing the written file and re-presenting; repeat until the user explicitly approves. On approval, create/switch to the already-confirmed branch, then **commit the approved artifacts** (`docs/specs/`, `CONTEXT.md`, ADRs as needed) via `se-commit` — *unless* the user asks not to commit, or `docs/specs/` is gitignored. The approval is authorization to create the confirmed branch and commit; do not ask again unless branch creation fails, facts changed, or checkout conflicts with the approved uncommitted files. In that conflict case, stop and ask; never stash, discard, or rewrite approved review artifacts silently.
-6. **Plan (architecture + verification).** Once the spec is approved, **se-discuss auto-chains into the Plan phase in the same session — the user never has to invoke `/se-plan` manually.** Read the spec. Design the architecture, researching via subagents. Discover the full repo skill catalog and bind matching skills to tasks (see Repo skill catalog & task binding). **Resolve every risk and open question with the user up front** (grill like discuss, but for HOW) — the plan carries no open items into execution. Design verification (see below) and reach agreement. If the feature involves UI work, ask about incorporating impeccable (default yes — see Optional: UI design). Write the plan. **Human-review gate:** the user reviews architecture + data flow.
+6. **Plan (architecture + verification).** Once the spec is approved, **se-discuss auto-chains into the Plan phase in the same session — the user never has to invoke `/se-plan` manually.** Read the spec. Design the architecture, researching via subagents. Discover the full repo skill catalog and bind matching skills to tasks (see Repo skill catalog & task binding). **Resolve every risk and open question with the user up front** (grill like discuss, but for HOW) — the plan carries no open items into execution. Design verification (see below) and reach agreement. If the feature involves UI work, ask about incorporating impeccable (default yes — see Optional: UI design). Write the plan with plan frontmatter (`title`, `feature`, confirmed `branch`, `status: pending`) before `## Execution Checklist` as the first section, then immediately record `active_plan: .super-exec/<feature>/<plan-dir>/plan.md` in `.super-exec/active`. **Human-review gate:** the user reviews architecture + data flow. At approval, `se-plan` may add/update `approved:` metadata, but approval is not the first time `active_plan` is recorded; the plan status stays `pending` until execution starts.
 7. End: instruct the user to start a fresh session and run `/se-exec`. The discuss→plan transition auto-chains; the **plan→execute transition is a hard fresh-session boundary** and is never auto-chained.
 
 `/se-plan` is also a manual re-entry point: re-plan or update an existing spec's plan without re-interviewing the spec.
@@ -47,7 +47,7 @@ super-exec ships as **skills only** — the three entrypoints (`se-discuss`, `se
 
 **`/se-exec`** drives the whole session:
 
-1. Locate the relevant plan (match branch/ticket → feature → most recent plan dir; confirm). Read the plan; read the spec for acceptance.
+1. Locate the relevant plan. `/se-exec` activation reads any existing `.super-exec/active` first and refreshes it with `phase: exec` while preserving any existing `active_plan` (and convenience `branch`) until plan resolution replaces it. If `/se-exec` was manually invoked with an explicit plan path (`plan.md` or a directory containing it), use that plan without asking for confirmation; the path is the confirmation. If no path was specified, check `.super-exec/active` for `active_plan`, resolve it, and ask the user to confirm that plan. If there is no active-plan marker, match branch/ticket → feature → most recent plan dir, then confirm the inferred match. If no plan exists, or the marker points at a missing plan, tell the user and stop. Once selected, refresh `.super-exec/active` with `phase: exec` and the selected `active_plan`. Read plan frontmatter, checklist, and spec for acceptance; if frontmatter has `branch`, the current git branch must match in normal mode, while `--worktree` validates the main checkout before creating the worktree and then lets worktree setup own branch checkout. A missing checklist is never treated as completed: completion requires frontmatter `status: completed`, or the first `## Execution Checklist` exists, has at least one item, and all items are checked. If no checklist exists and status is not completed, resume from `## Tasks` / handoff evidence or ask the user to confirm the resume point. At execution start, update plan `status` from `pending` to `in_progress`. Seed or sync the harness-native task/todo list from the plan's `## Execution Checklist` when available, using the CC `TodoWrite` primitive or its translated equivalent. The native task/todo tool is operational session state; plan frontmatter + checklist are durable local resume state.
 2. **Present the two toggles once:**
    - *Review before each commit?* — default **off** (auto-commit per task).
    - *Auto-PR?* — default **off**. This is the "human in the loop?" switch.
@@ -56,14 +56,16 @@ super-exec ships as **skills only** — the three entrypoints (`se-discuss`, `se
    With review-before-commit **off**, the user's toggle answer is explicit standing authorization to auto-commit per task — each per-task commit is a user-requested commit, not a proactive one — reconciling super-exec auto-commit with a host agent policy that otherwise forbids committing without an explicit per-action user request; this is a prose-level resolution (no host hook forces a commit). With the toggle **on**, that host policy still governs (per-task commits wait for approval; B1 hard-blocks commits while `.super-exec/gate-open` is open).
 3. **Outer loop — review / fix**, wrapping an **inner loop — execute / verify**:
    - **Inner loop:** dispatch implementer subagents per task; each invokes the task's bound repo skill before hand-rolling. A **verifier subagent** then runs the repo verification **baseline** (always) plus the task's **task-specific** verification, and confirms the output works and matches the spec + plan. Not verified → fix → re-verify, until green. The verifier is the **first catch for spec divergence**: a result that does not match the spec is a **bug by default** — fix the code, never silently rewrite the spec (see Divergence & spec authority). Independent, file-disjoint tasks run in parallel; dependent or same-file tasks run sequentially. No worktrees by default; `--worktree` opt-in. When impeccable is enabled, UI tasks are built via `/impeccable craft` (see Optional: UI design).
-   - On each task going green, **commit** via `se-commit` (per task). If review-before-commit is on, show the diff + proposed message and wait.
+   - On inner-loop-green, **commit** via `se-commit` (per task). If review-before-commit is on, show the diff + proposed message and wait. The plan checklist is marked only after the task is committed and outer-loop-clean; task-level completion is post-review, not pre-review.
    - **Code review:** an arch-gate pass first — does the implementation match the agreed architecture? Deviation → fix (re-enters the inner loop) → re-gate. Once the shape is sound, a deep-review pass: data-flow bugs → reuse-existing-utility check → pattern/consistency, plus an impeccable UI-critique lens when enabled. Findings are severity-tagged (Critical / Important / Minor). Critical/Important block and re-enter the inner loop; Minor is reported, non-blocking. A fresh reviewer re-reviews after fixes. Loop until clean.
 4. **End-of-build → PR decision** (governed by the *Auto-PR* toggle):
-   - **Auto-PR ON:** no final human review. Invoke `se-pr` directly to open the PR.
-   - **Auto-PR OFF:** write `.super-exec/gate-open`, present the work for a final human review (commits are blocked while the gate is open), and **wait**. Once the human resolves the review, **ask "Create a draft PR?"** — **No** → clear `gate-open`, clear `.super-exec/active`, end the session (the work stays committed on the branch, no PR); **Yes** → clear `gate-open` and invoke `se-pr`.
-5. **PR (`se-pr`):** create the pull request. **If the repo has a `create-pr` skill, follow it 100%** (it owns version bump, draft-first creation, evidence capture, and `pull_request_template.md`). Fallback when no repo skill exists: strictly follow `pull_request_template.md` (N primary sections → N primary sections, no extra; sub-sections and detail allowed), draft mode, evidence for UI changes when available, and the default PR-title format (see Default conventions). The PR is created directly — the decision to create it was already made (Auto-PR ON, or the human's "Yes" at step 4); no second draft-approval wait in the fallback path. `se-pr` clears `.super-exec/active` on PR completion.
+   - **Auto-PR ON:** no final human review. Mark the final item complete in the native task/todo tool first, sync the plan checklist, update plan `status` to `completed`, and invoke `se-pr` directly to open the PR.
+   - **Auto-PR OFF:** write `.super-exec/gate-open`, present the work for a final human review (commits are blocked while the gate is open), and **wait**. Once the human resolves the review, **ask "Create a draft PR?"** — **No** → mark the final item complete in the native task/todo tool first, sync the plan checklist, update plan `status` to `completed`, clear `gate-open`, clear `.super-exec/active`, end the session (the work stays committed on the branch, no PR); **Yes** → mark the final item complete in the native task/todo tool first, sync the plan checklist, update plan `status` to `completed`, clear `gate-open` and invoke `se-pr`.
+5. **PR (`se-pr`):** create the pull request. **If the repo has a `create-pr` skill, follow it 100%** (it owns version bump, draft-first creation, evidence capture, and any PR template rules). Fallback when no repo skill exists: use the repo `pull_request_template.md` when present (N primary sections → N primary sections, no extra; sub-sections and detail allowed), otherwise use the built-in `plugin/skills/se-pr/pr-template.md`; draft mode, evidence for UI changes when available, and the default PR-title format (see Default conventions). The PR is created directly — the decision to create it was already made (Auto-PR ON, or the human's "Yes" at step 4); no second draft-approval wait in the fallback path. If PR creation fails, surface the failure and ask whether to retry or repair PR creation; do not restart plan execution or mark the plan incomplete. Once a PR exists, review comments and CI failures belong to `se-pr-triage` or explicit user action, not plan execution. `se-pr` clears `.super-exec/active` on PR completion.
 
-**Resume:** the controller monitors its own context. At a threshold it auto-writes `handoff.md` (via super-exec's own `se-handoff` skill, into `.super-exec/`) and pauses; the user runs `/clear` and re-runs `/se-exec`, which detects the in-progress plan + handoff and resumes from the next unstarted task.
+`/se-pr-triage` is the fourth entrypoint and owns post-PR review/CI triage only. It writes `.super-exec/active` with `phase: pr-triage` on activation, processes one triage round, and clears `.super-exec/active` at every exit path (no PR/access failure/nothing actionable/end-of-round). It is not auto-chained from `se-pr`; the human invokes it explicitly or wraps it in `/loop`.
+
+**Resume:** the controller monitors its own context. At a threshold it auto-writes `handoff.md` (via super-exec's own `se-handoff` skill, into `.super-exec/`) and pauses; the user runs `/clear` and re-runs `/se-exec`, which detects the active plan marker + handoff and resumes from the next unstarted task. Each outer-loop-clean task is also marked in the plan's first `## Execution Checklist` section; if every checklist item is complete, `/se-exec` tells the user the plan is already completed instead of restarting it.
 
 ## Verification design
 
@@ -100,7 +102,7 @@ The **only** paths that change a committed spec during a build are a human decis
 
 1. **Delegate by default.** Build, test, wide search, and long review run in subagents that report a summary — never inline in the controller.
 2. **Verify before done.** No completion claim without baseline + task verification evidence.
-3. **Scope guard (YAGNI).** Implement only what the plan specifies. No unrequested tests, sections, or scope. Do not edit the plan during execution.
+3. **Scope guard (YAGNI).** Implement only what the plan specifies. No unrequested tests, sections, or scope. During execution, the only allowed plan edits are marking items complete in the first `## Execution Checklist` section and updating frontmatter `status` (`pending` / `in_progress` / `completed`).
 4. **Reuse before writing.** Check the repo skill catalog and existing utilities/patterns before adding new code; invoke a covering skill (e.g. `create-api-service`) rather than hand-rolling. Skills are bound to tasks at plan time (see Repo skill catalog & task binding).
 5. **Repo conventions first.** super-exec ships complete, opinionated default conventions so it works in a bare repo, but they are fallbacks: for any convention-bearing action, follow the repo's own skill 100% (every word) → then a detected repo pattern → then the tool default. The repo always wins; defaults only fill silence. This precedence is what makes the tool drop-in and adaptable to every repo. Prefer repo abstractions (e.g. RTK) over raw shell.
 6. **No commit while a human-review gate is open; no PR reply without an approved draft.** Routine commits are expected (per-task auto-commit, the spec commit on approval, an Auto-PR-mode `docs:` amend); what is forbidden is committing while a review gate (`.super-exec/gate-open`) is open, and replying to a PR comment without an approved draft.
@@ -117,16 +119,17 @@ Enforcement layers: strong directive language + red-flag tables + flowcharts in 
 | Spec | `docs/specs/NNNN-<feature>.md` (monorepo app-specific: `docs/specs/<app>/NNNN-<feature>.md`) | yes, after approval | team |
 | ADR | `docs/adr/NNNN-<slug>.md` (app-specific: `docs/adr/<app>/…`) | yes, sparingly | team |
 | Glossary | `CONTEXT.md` / `CONTEXT-MAP.md` | yes, lazy | team |
-| Plan(s) | `.super-exec/<feature>/<YYYY-MM-DD>-<plan-name>/plan.md` | **no (gitignored)** | local |
+| Active marker | `.super-exec/active` (`phase`, `active_plan` immediately after `plan.md` write; optional `approved`; optional convenience `branch`) | no (gitignored) | local |
+| Plan(s) | `.super-exec/<feature>/<YYYY-MM-DD>-<plan-name>/plan.md` with plan frontmatter (`title`, `feature`, `branch`, `status`) | **no (gitignored)** | local |
 | Handoff / scratch | `.super-exec/<feature>/<…>/{handoff.md,scratch/}` | no | local |
 
-One long-lived spec per feature; many dated plans per feature (≈ one plan ≈ one execute session ≈ one PR). **The spec never references the plan** (plans are local; teammates have only specs). `NNNN` is the next available four-digit number in that specs directory (find the highest existing prefix and increment), while `<feature>` is the work's feature name — the same slug as the branch and `.super-exec/<feature>/` plan directory (a ≤6-word summary of the change), lowercase-kebab; it is **never** the repo/project/package name, and the tool halts to confirm with the user if a candidate slug collides with the project name. The tool keeps `.super-exec/` out of git via the repo-local, **uncommitted** `.git/info/exclude` — written idempotently by the SessionStart hook on every session, so the local-only artifact gets a local-only ignore with no edit to the team-shared `.gitignore`. (See ADR 0002.)
+One long-lived spec per feature; many dated plans per feature (≈ one plan ≈ one execute session ≈ one PR). **The spec never references the plan** (plans are local; teammates have only specs). `NNNN` is the next available four-digit number in that specs directory (find the highest existing prefix and increment), while `<feature>` is the work's feature name — the same slug as the branch and `.super-exec/<feature>/` plan directory (a ≤6-word summary of the change), lowercase-kebab; it is **never** the repo/project/package name, and the tool halts to confirm with the user if a candidate slug collides with the project name. For build sessions, the branch source of truth is plan frontmatter `branch`; `.super-exec/active` is only the local resume pointer. The tool keeps `.super-exec/` out of git via the repo-local, **uncommitted** `.git/info/exclude` — written idempotently by the SessionStart hook on every session, so the local-only artifact gets a local-only ignore with no edit to the team-shared `.gitignore`. (See ADR 0002.)
 
 ### Spec template
 
 ```
 # <Feature>
-> Ticket: INTCOMP-#### | NO_TICKET  ·  Status: active
+> Ticket: <TICKET-ID | NO_TICKET>  ·  Status: <draft | active | superseded>
 ## Problem / Why
 ## Goals
 ## Non-goals (out of scope)
@@ -140,18 +143,31 @@ The spec is **WHAT-only**: no code blocks, no file layout, no scaffolding — th
 ### Plan template
 
 ```
+---
+title: <Plan title>
+feature: <feature slug>
+branch: <confirmed branch name>
+status: pending
+---
 # <Plan name>
+## Execution Checklist
+- [ ] <Task 1 name>
+- [ ] <Task 2 name>
+- [ ] Final review / PR decision
 ## Goal              (+ link to spec)
 ## Architecture      components / responsibilities / data flow — prose +
                      mermaid/ASCII diagrams (HTML used only to render diagrams) +
                      folder/file structure as ASCII tree;
                      signatures/pseudo-code only where they clarify architecture
-## Data flow         diagram
+## Data Flow         diagram
 ## Tasks             overview-level; dependency notes; each states its own verification
 ## Verification      how to verify the whole plan works (baseline + acceptance)
+### Browser/E2E Preflight
 ```
 
-No change-files manifest, no copy-paste-ready code, no output mockups. Risks/open questions are resolved with the user before the plan is finalized.
+No change-files manifest, no copy-paste-ready code, no output mockups. Risks/open questions are resolved with the user before the plan is finalized. The `Final review / PR decision` checklist item is fixed bookkeeping for se-exec step 10, not an executable implementation task and not a task dispatched in step 6.
+
+All plugin template files are pure copy-pasteable artifact templates. They start directly with the final artifact shape, without wrapper prose, "how to use this" instructions, or a fenced markdown block around the whole template. Fill/use rules live in the owning `SKILL.md` or nearby instruction docs.
 
 ## Convention delegation map
 
@@ -176,9 +192,11 @@ Used only when the target repo has no skill/pattern for the action (per ADR 0001
 
 **Branch** (from `git-new-branch`): all-lowercase, `-` separated. With ticket → `<ticket-id>-<≤6-word-summary>` (e.g. `intcomp-1234-new-headline-note-banner`); no ticket → `<feat|fix|chore|ci|docs|test|style|refactor|perf>-<≤6-word-summary>`. Always `git fetch --all --prune` first; base `origin/develop`; create with `git checkout -b <name> origin/develop^0` (`^0` = no tracked upstream, set on first push).
 
-**Commit**: owned entirely by the `se-commit` skill — staging isolation plus the message (the repo commit skill, e.g. `git-commit-message`, else a conventional fallback). The spec does not duplicate the commit rules; see the `se-commit` skill for the authoritative definition.
+**Commit**: owned entirely by the `se-commit` skill — staging isolation plus the message (the repo commit skill, e.g. `git-commit-message`, else a conventional fallback). The fallback conventional types include `feat`, `fix`, `refactor`, `style`, `test`, `docs`, `ci`, and `chore`; performance-only changes are `refactor` when they do not change behavior. The spec does not duplicate the full commit rules; see the `se-commit` skill for the authoritative definition.
 
-**PR title** (used only in the `se-pr` fallback path when the repo has no `create-pr` skill): `<type>(<optional-scope>): <brief summary> - <TICKET-a>, <TICKET-b>`. Types: `feat`, `fix`, `ci`, `test`, `chore`. Scope: in a **monorepo**, include the changed app/package scope when **exactly one** app changed, and omit it when **multiple** apps changed; in a **standalone repo**, omit the scope entirely. Tickets: comma-separated; use `NO_TICKET` when there is none. When a repo `create-pr` skill exists, its title format wins (the repo always wins — see Enforced discipline rule 5).
+**PR title** (used only in the `se-pr` fallback path when the repo has no `create-pr` skill): `<type>(<optional-scope>): <brief summary> - <TICKET-a>, <TICKET-b>`. Types: `feat`, `fix`, `ci`, `test`, `chore`, `perf`. Scope: in a **monorepo**, include the changed app/package scope when **exactly one** app changed, and omit it when **multiple** apps changed; in a **standalone repo**, omit the scope entirely. Tickets: comma-separated; use `NO_TICKET` when there is none. When a repo `create-pr` skill exists, its title format wins (the repo always wins — see Enforced discipline rule 5).
+
+**PR body** (used only in the `se-pr` fallback path when the repo has no `create-pr` skill): mirror the repo `pull_request_template.md` when present. If the repo has no PR template, use the shipped built-in `plugin/skills/se-pr/pr-template.md` exactly as the starting body.
 
 ## Packaging & distribution
 
@@ -198,6 +216,7 @@ super-exec/
 │       ├── se-exec/                  # + worktree.md
 │       ├── se-verify/, se-review/    # inner & outer loops
 │       ├── se-pr/                    # + pr-template.md
+│       ├── se-pr-triage/              # + ci-triage.md; post-PR review/CI triage
 │       ├── se-handoff/               # + handoff-outline.md
 │       ├── se-subagent/              # internal: model tiers + dispatch discipline (user-invocable: false)
 │       └── se-commit/                # internal: staging-isolated commits (user-invocable: false)
@@ -235,7 +254,7 @@ This decision is recorded in ADR 0004.
 
 ## Portability
 
-Authored and dogfooded on Claude Code. Skills are written in **Claude Code language** — CC tool names (`Read`, `Edit`, `Write`, `Task`, `AskUserQuestion`, `TodoWrite`), CC model aliases (`opus` / `sonnet` / `haiku`, never a pinned version string), and CC hook event names, all inline with no per-skill harness branching. Cross-harness support is a **single one-way translation table** at `using-super-exec/references/cursor-tools.md` that maps every CC primitive — tools, model aliases (the strong tier → the best available reasoning model at high effort; mid/cheap → latest composer non-fast), hook events, env vars — to its Cursor equivalent. Model tiers resolve through the internal `se-subagent` skill. Because the skills only **soft-reference** that table, the model on Cursor was observed never opening it and then inheriting the session model for every subagent (cheap git/finder work landing on the expensive model); so the SessionStart hook **injects the full `cursor-tools.md` into context on Cursor**, guaranteeing the translation is present without a file read. The table stays tier-named and slug-free (the live model slugs change weekly — the durable rule maps a tier to "non-fast Composer" / "strongest high-effort reasoning"; the actual slug is picked from the dispatch tool's own allowlist at dispatch time). A `.cursor-plugin` config ships with the plugin. CC-only *nudge* hooks (N1/N2/N3) degrade to prose on Cursor; the hard *block* (B1, no commit while the review gate is open) runs natively via Cursor's `beforeShellExecution` (`deny` + `failClosed`).
+Authored and dogfooded on Claude Code. Skills are written in **Claude Code language** — CC tool names (`Read`, `Edit`, `Write`, `Task`, `AskUserQuestion`, `TodoWrite`), model aliases (`opus` / `sonnet` / `haiku`, never pinned version strings), and hook event names. Cross-harness support is a **single one-way translation table** at `using-super-exec/references/cursor-tools.md`; individual skills do not branch by harness or spell alternate tool APIs inline. The table maps CC primitives — tools, model aliases (strong → best high-effort reasoning model; mid/cheap → latest composer non-fast), hook events, env vars — to each harness equivalent. Model tiers resolve through the internal `se-subagent` skill. Because Cursor runs had skipped the soft-referenced table and inherited the session model for every subagent, the SessionStart hook injects `cursor-tools.md` on Cursor. The table stays tier-named and slug-free; the actual slug is picked from the dispatch tool's allowlist at dispatch time. A `.cursor-plugin` config ships with the plugin. CC-only *nudge* hooks (N1/N2/N3) degrade to prose on Cursor; the hard *block* (B1, no commit while the review gate is open) runs natively via Cursor's `beforeShellExecution` (`deny` + `failClosed`).
 
 ## Domain terms
 
@@ -256,12 +275,12 @@ Authored and dogfooded on Claude Code. Skills are written in **Claude Code langu
 - **Skill precedence** — super-exec's best-effort claim to the workflow-driver role when the superpowers plugin is co-installed: super-exec wins where the two overlap; superpowers stays available for gaps (see Coexistence with superpowers).
 - **Overlap bucket** — workflow needs both plugins cover; super-exec's spine skill is the driver and the superpowers equivalent is not invoked as driver (discuss/plan/build/verify/review/worktree/PR/dispatch).
 - **Gap bucket** — needs super-exec has no equivalent for (e.g. systematic-debugging, find-skills, writing-skills); superpowers stays available and is used freely.
-- **Best-effort override** — precedence asserted by specific, named clause content (not by tag-name escalation, detection, or by disabling superpowers); the clause is always present and conditionally worded, a no-op when superpowers is absent. The README additionally recommends (soft, non-enforced) disabling superpowers in projects that use super-exec.
+- **Best-effort override** — precedence asserted by specific, named clause content (not by tag-name escalation, detection, or by disabling superpowers); the clause is always present and conditionally worded, a no-op when superpowers is absent.
 
 ## Decisions
 
 See `docs/adr/` for: repo-skill delegation precedence (0001); local-only plans / spec-plan visibility boundary (0002); skills-only entrypoints, no thin commands (0003); superpowers co-install skill-precedence (0004).
 
-## Fast-follow (post-v1)
+## Related specs
 
-- **`se-pr-triage`** — specced in [`0002-pr-triage-watch-bot.md`](0002-pr-triage-watch-bot.md) (build pending). One loop-safe triage round per invocation over two tracks: review comments (CodeRabbit + human) triaged Fix/Decline/Answer/Defer and replied in-thread under a mandatory human approval gate, and CI failures (Playwright, Cycode, lint/type/unit, SonarCloud, PR-title) investigated and resolved autonomously (flaky → rerun once; real → fix via the build verify/review loops), never replied to. The author's two rules are carried into the spec: sequencing — fix → commit → **push** → *then* reply (never reply before the fix is pushed); realism — bots don't know the full data flow or reachability, so don't fix comments that add needless complexity for impossible cases.
+- **`se-pr-triage`** — implemented as the fourth entrypoint and specced in [`0002-pr-triage-watch-bot.md`](0002-pr-triage-watch-bot.md). One loop-safe triage round per invocation over two tracks: review comments (CodeRabbit + human) triaged Fix/Decline/Answer/Defer and replied in-thread under a mandatory human approval gate, and CI failures (Playwright, Cycode, lint/type/unit, SonarCloud, PR-title) investigated and resolved autonomously (flaky → rerun once; real → fix via the build verify/review loops), never replied to. The author's two rules are carried into the spec: sequencing — fix → commit → **push** → *then* reply (never reply before the fix is pushed); realism — bots don't know the full data flow or reachability, so don't fix comments that add needless complexity for impossible cases.

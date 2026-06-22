@@ -22,7 +22,7 @@ Used only when the repo ships no commit skill — a repo commit skill always win
 
 - Conventional, **no scope**, single line: `<type>: <summary>`.
 - One logical change per commit; unrelated changes are separate commits; no ticket number.
-- Types: `feat` (new feature), `fix` (other behavior change), `refactor` (no behavior change: rename/move/rewrite), `style` (whitespace/format), `test` (tests/test-utils only), `docs` (docs/comments/README only), `ci` (CI tooling), `chore` (build/deps/dev tooling).
+- Types: `feat` (new feature), `fix` (other behavior change), `refactor` (no behavior change: rename/move/rewrite/performance-only improvement), `style` (whitespace/format), `test` (tests/test-utils only), `docs` (docs/comments/README only), `ci` (CI tooling), `chore` (build/deps/dev tooling).
 - Local commits only — the PR merge squashes to the PR title.
 
 ## Dispatch

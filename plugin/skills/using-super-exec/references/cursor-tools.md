@@ -1,6 +1,6 @@
 # Cursor translation (one-way, CC → Cursor)
 
-super-exec skills are authored in **Claude Code language** — CC tool names (`Read`, `Edit`, `Write`, `Task`, `AskUserQuestion`, `TodoWrite`), CC model aliases (`opus` / `sonnet` / `haiku`), and CC hook event names — written inline, with no per-skill harness branching.
+super-exec skills are authored in **Claude Code language** — CC tool names (`Read`, `Edit`, `Write`, `Task`, `AskUserQuestion`, `TodoWrite`), CC model aliases (`opus` / `sonnet` / `haiku`), and CC hook event names. This file is the harness-neutral translation layer; individual skills should not branch per harness.
 
 This file is the **single** place that translation lives. When running under Cursor, read the CC primitive in a skill and resolve it through the tables below. The mapping is **one-way** (CC → Cursor): skills never spell a Cursor name; Cursor readers translate on the fly. Where a Cursor mapping is unknown or undocumented, the entry says **Cursor-native equivalent** rather than inventing a name.
 
@@ -12,11 +12,11 @@ super-exec names model **tiers** by family alias so they never go stale (see the
 
 | CC alias | Tier / role | Cursor |
 |---|---|---|
-| `opus` (non-fast) | strong — discuss interview, plan, arch-gate & deep review, verifier judgment, handoff authoring | The strongest available reasoning model at high reasoning effort — latest GPT (e.g. GPT-5.5, Extra High) **or** latest Opus (e.g. Opus 4.8, Extra High); if none is selectable, fall back to Default / inherit (non-fast). |
+| `opus` (non-fast) | strong — discuss interview, plan, arch-gate & deep review, impeccable-critique, verifier judgment, handoff authoring | The strongest available reasoning model at high reasoning effort — latest GPT (e.g. GPT-5.5, Extra High) **or** latest Opus (e.g. Opus 4.8, Extra High); if none is selectable, fall back to Default / inherit (non-fast). |
 | `sonnet` (pinned) | mid — implementer / fixer | latest composer non-fast |
 | `haiku` | cheap — script-runner / runner / finder / investigator | latest composer non-fast |
 
-> Model names above are illustrative (`e.g.`), not pinned — always pick the *latest* in each family. The strong tier wants the best reasoning available; the mid/cheap tiers want the fast composer model.
+> Model names above are illustrative (`e.g.`), not pinned — always pick the *latest* in each family. The strong tier wants the best reasoning available; the mid/cheap tiers want the non-fast Composer model.
 
 > **Pinned-to-Sonnet policy on Cursor.** CC pins the implementer/fixer to `sonnet` explicitly. Cursor's composer model selection is less granular, so the equivalent is "latest composer non-fast" and inheritance from the non-fast tier is acceptable.
 

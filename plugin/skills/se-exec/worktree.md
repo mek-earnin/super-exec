@@ -90,7 +90,7 @@ given the **worktree path** as its working directory.
 
 ## 5. Integrate and clean up
 
-When all tasks are verified green:
+When all tasks are committed and outer-review-clean:
 
 1. **Merge or open a PR from the worktree branch.** The worktree branch is an
    ordinary git branch. Treat it exactly as you would any feature branch:

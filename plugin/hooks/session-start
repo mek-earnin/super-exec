@@ -12,11 +12,12 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # .super-exec/active   A /se-* driver skill on its       se-pr on PR completion;
 #                      session-activation step            se-exec on the no-PR exit
-#                      (se-discuss, se-plan, se-exec).      (final review with *Finish
-#                                                         Auto-PR OFF and the user
-#                                                         declines the PR); OR the
-#                                                         stale-TTL sweep on
-#                                                         session-start (see below).
+#                      (se-discuss, se-plan, se-exec,     (final review with
+#                      se-pr-triage). se-plan adds        Auto-PR OFF and the user
+#                      active_plan immediately after      declines the PR); se-pr-triage
+#                      plan.md write.                     at the end of a triage round.
+#                      Anchor: immediately after plan.md write.
+#                                                         SessionStart never deletes it.
 #
 # .super-exec/gate-open  se-exec — both the review-       se-exec, once the gate
 #                        before-commit toggle AND the     resolves (human approves
@@ -41,19 +42,20 @@
 #   - Subagents (agent_id present in CC payload) never receive N1/N2.
 #   - On Cursor: N1/N2 degrade to prose (no nudge emitted); B1 runs natively.
 #
-# STALE-TTL (NO FIXED NUMERIC VALUE):
-#   Clearing a stale .super-exec/active is a MODEL-JUDGED heuristic. The
-#   session-start hook surfaces the marker's mtime and any in-progress plan
+# STALE MARKER ORIENTATION (NO FIXED NUMERIC VALUE):
+#   Deciding whether .super-exec/active is stale is a MODEL-JUDGED heuristic.
+#   The session-start hook surfaces the marker's mtime and any in-progress plan
 #   context to the model via the orientation injection below. The model reads
-#   that context and decides whether the session is genuinely stale. The hook
+#   that context and decides whether to ask the user about clearing it. The hook
 #   NEVER auto-deletes the marker and NEVER uses a hardcoded numeric TTL.
 #   This avoids false positives (a dev resumes after a long weekend) while
 #   still letting the model surface "this looks stale — should I clear it?"
 #   to the user.
 #
 # RESUME DETECT (this hook):
-#   Read-only re: markers. Appended to orientation context only. Never writes,
-#   moves, or deletes any .super-exec/ marker.
+#   Read-only re: markers. Appended to orientation context only. Prefers
+#   active_plan from .super-exec/active, then falls back to latest plan discovery.
+#   Never writes, moves, or deletes any .super-exec/ marker.
 #
 # LOCAL-IGNORE (this hook):
 #   The hook's ONE write: it ensures .super-exec/ is listed in the repo-local,
@@ -182,7 +184,7 @@ fi
 # ---------------------------------------------------------------------------
 # Check for an active super-exec session and any in-progress plan directory.
 # We surface the marker age and plan context so the model can judge whether
-# the session is stale (no fixed TTL — see STALE-TTL comment above).
+# the session is stale (no fixed TTL — see stale marker orientation above).
 resume_note=""
 
 if [ -f "${SUPER_EXEC_DIR}/active" ]; then
@@ -195,29 +197,109 @@ if [ -f "${SUPER_EXEC_DIR}/active" ]; then
       || echo "unknown")
   fi
 
-  # Look for any in-progress plan directory: .super-exec/<feature>/<plan-dir>/plan.md
   plan_context=""
+  plan_status=""
+  invalid_plan_context=""
+
+  set_plan_context_from_file() {
+    local plan_file="$1"
+    local source_note="$2"
+    local feature_dir feature plan_dir plan_name handoff_note line in_frontmatter parsed_status
+
+    feature_dir=$(dirname "$(dirname "$plan_file")")
+    feature=$(basename "$feature_dir")
+    plan_dir=$(dirname "$plan_file")
+    plan_name=$(basename "$plan_dir")
+    handoff_note=""
+    if [ -f "${plan_dir}/handoff.md" ]; then
+      handoff_note=" (handoff.md present — mid-session handoff detected)"
+    fi
+    plan_context="Feature: ${feature} / Plan dir: ${plan_name} (${source_note})${handoff_note}"
+    plan_status=""
+    in_frontmatter="0"
+    while IFS= read -r line; do
+      if [ "$in_frontmatter" = "0" ]; then
+        [ "$line" = "---" ] && in_frontmatter="1" || break
+        continue
+      fi
+      [ "$line" = "---" ] && break
+      case "$line" in
+        status:*)
+          parsed_status="${line#status:}"
+          parsed_status="${parsed_status#"${parsed_status%%[![:space:]]*}"}"
+          parsed_status="${parsed_status%"${parsed_status##*[![:space:]]}"}"
+          parsed_status="${parsed_status%\"}"
+          parsed_status="${parsed_status#\"}"
+          parsed_status="${parsed_status%\'}"
+          parsed_status="${parsed_status#\'}"
+          plan_status="$parsed_status"
+          break
+          ;;
+      esac
+    done < "$plan_file"
+  }
+
+  # Prefer the concrete plan recorded in the active marker:
+  #   active_plan: .super-exec/<feature>/<plan-dir>/plan.md
+  # The marker remains the active-session signal for guards; active_plan adds the
+  # concrete plan target for resume/execute sessions.
+  active_plan=""
+  while IFS= read -r marker_line; do
+    case "$marker_line" in
+      active_plan:*)
+        active_plan="${marker_line#active_plan:}"
+        active_plan="${active_plan#"${active_plan%%[![:space:]]*}"}"
+        active_plan="${active_plan%"${active_plan##*[![:space:]]}"}"
+        active_plan="${active_plan%\"}"
+        active_plan="${active_plan#\"}"
+        active_plan="${active_plan%\'}"
+        active_plan="${active_plan#\'}"
+        ;;
+    esac
+  done < "${SUPER_EXEC_DIR}/active"
+
+  if [ -n "$active_plan" ]; then
+    case "$active_plan" in
+      /*) resolved_plan="$active_plan" ;;
+      *)  resolved_plan="${PROJECT_DIR}/${active_plan}" ;;
+    esac
+    if [ -d "$resolved_plan" ]; then
+      resolved_plan="${resolved_plan}/plan.md"
+    fi
+    if [ -f "$resolved_plan" ]; then
+      set_plan_context_from_file "$resolved_plan" "active_plan marker"
+    else
+      invalid_plan_context="active_plan marker references ${active_plan}, but no plan.md exists there"
+    fi
+  fi
+
+  # Fallback when the marker does not yet name a plan: look for any in-progress
+  # plan directory: .super-exec/<feature>/<plan-dir>/plan.md
   if [ -d "${SUPER_EXEC_DIR}" ]; then
     # Find the most recently modified plan.md that is NOT at the root level
     # (plans live at depth 3: .super-exec/<feature>/<plan-dir>/plan.md).
-    while IFS= read -r plan_file; do
-      feature_dir=$(dirname "$(dirname "$plan_file")")
-      feature=$(basename "$feature_dir")
-      plan_dir=$(dirname "$plan_file")
-      plan_name=$(basename "$plan_dir")
-      handoff_note=""
-      if [ -f "${plan_dir}/handoff.md" ]; then
-        handoff_note=" (handoff.md present — mid-session handoff detected)"
-      fi
-      plan_context="Feature: ${feature} / Plan dir: ${plan_name}${handoff_note}"
-      break  # Use the most recently modified one
-    done < <(find "${SUPER_EXEC_DIR}" -mindepth 3 -maxdepth 3 -name "plan.md" \
-               -exec ls -t1 {} + 2>/dev/null | head -1 | xargs -I{} dirname {} \
-               | xargs -I{} find {} -name "plan.md" 2>/dev/null || true)
+    if [ -z "$plan_context" ] && [ -z "$invalid_plan_context" ]; then
+      while IFS= read -r plan_file; do
+        set_plan_context_from_file "$plan_file" "latest plan discovery"
+        break  # Use the most recently modified one
+      done < <(find "${SUPER_EXEC_DIR}" -mindepth 3 -maxdepth 3 -name "plan.md" \
+                 -exec ls -t1 {} + 2>/dev/null | head -1 | xargs -I{} dirname {} \
+                 | xargs -I{} find {} -name "plan.md" 2>/dev/null || true)
+    fi
   fi
 
   if [ -n "$plan_context" ]; then
-    resume_note="\n\n---\n**SUPER-EXEC SESSION IN PROGRESS**\n\nA super-exec session is active (marker age: ${active_mtime:-unknown}).\nIn-progress plan: ${plan_context}\n\nYou can resume this session with \`/se-exec\`. If this marker appears stale (the timestamp above is old relative to the current date), surface that to the user and ask whether to clear it — do NOT auto-delete the marker.\n---"
+    resume_header="SUPER-EXEC SESSION IN PROGRESS"
+    plan_label="In-progress plan"
+    resume_instruction="You can resume this session with \`/se-exec\`."
+    if [ "$plan_status" = "completed" ]; then
+      resume_header="SUPER-EXEC SESSION ACTIVE (completed plan)"
+      plan_label="Completed plan"
+      resume_instruction="You can run \`/se-exec\` to let se-exec confirm completion or choose the next explicit action."
+    fi
+    resume_note="\n\n---\n**${resume_header}**\n\nA super-exec session is active (marker age: ${active_mtime:-unknown}).\n${plan_label}: ${plan_context}\n\n${resume_instruction} If this marker appears stale (the timestamp above is old relative to the current date), surface that to the user and ask whether to clear it — do NOT auto-delete the marker.\n---"
+  elif [ -n "$invalid_plan_context" ]; then
+    resume_note="\n\n---\n**SUPER-EXEC SESSION IN PROGRESS (active plan invalid)**\n\nA super-exec \`active\` marker exists (marker age: ${active_mtime:-unknown}). ${invalid_plan_context}. Surface this to the user; do NOT silently choose a different plan and do NOT auto-delete the marker.\n---"
   else
     resume_note="\n\n---\n**SUPER-EXEC SESSION IN PROGRESS (no in-progress plan found)**\n\nA super-exec \`active\` marker exists (marker age: ${active_mtime:-unknown}) but no in-progress plan.md was found under \`.super-exec/\`. This may indicate the session never advanced past discuss/plan, or the plan directory was cleaned up. If the marker looks stale, surface that to the user. Do NOT auto-delete the marker.\n---"
   fi

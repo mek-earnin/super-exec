@@ -6,5 +6,5 @@
 
 ## Preventing out of sync data
 When plugin is updated
-- Always update related specs in `docs/specs`
-- Always update `README.md`
+- Always update related specs in `docs/specs` if it's outdated or some part is not true anymore. The spec should provide goal and intention, not minor implementation details, so it shouldn't need much update unless there's a change in direction.
+- Always update `README.md` if the content is not true any more. Keep it overview like marketing landing page, don't explain too much too deep. It shouldn't be a burden we have to keep updating. It should give the even more brief version of the spec but focusing on the plugin user perspective.

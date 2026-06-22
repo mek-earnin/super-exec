@@ -1,143 +1,85 @@
 # super-exec
 
-Complete workflow from vague idea to PR — less baby sitting, enforcing discipline at every stage,
-adapt to your repo convention. Shipped as a plugin for Claude Code (and Cursor). It carries a feature
-from **shared understanding → spec → plan → build → verify → review → PR**, while enforcing the
-discipline you'd otherwise correct by hand: delegate heavy work to subagents, verify before claiming
-done, stay in scope, reuse before writing, and respect each repo's own conventions.
+super-exec is a guided agent workflow for taking software work from a vague idea to a reviewable pull request. It ships as a Claude Code and Cursor plugin, and gives the agent a disciplined path instead of leaving each session to improvise.
 
-You stay in control at every checkpoint. super-exec does the legwork in between.
+Core flow:
 
----
+```text
+discuss -> plan -> exec -> PR / triage
+```
+
+You keep the approval points. super-exec does the research, planning, verification, review, and PR prep in between.
+
+## Why Use It
+
+super-exec is built for teams that want agent speed without constant babysitting:
+
+- Turns loose intent into a reviewed spec before implementation starts.
+- Separates WHAT from HOW, then builds from that agreed plan.
+- Keeps heavy searches, builds, tests, and reviews out of the main session when possible.
+- Verifies with real evidence before claiming work is done.
+- Prefers the target repo's own skills and conventions for branches, commits, PRs, tests, and local dev.
+- Keeps local execution artifacts local, while specs remain shareable review artifacts.
 
 ## Install
 
-super-exec is a plugin marketplace. Install it per repo:
+Install it per repo:
 
-```
+```text
 /plugin marketplace add mek-earnin/super-exec
 /plugin install super-exec
 ```
 
-That's it — open a session in the target repo and super-exec orients you automatically.
+Open a session in the target repo after install; super-exec orients itself from the repo and plugin context.
 
-### Optional dependencies (graceful — never required)
+### Optional Plugins
 
-super-exec is **self-contained**. These make it nicer when present and are skipped silently when not:
+super-exec is self-contained. These plugins improve specific workflows when present, and are skipped when absent:
 
-| Install | When | What it adds |
-|---|---|---|
-| **impeccable** | You work on **UI** (frontend apps, components, styles) | Production-grade UI design direction, build (`craft`), and review (`critique`). Recommended if you touch UI. |
-| **caveman** | You want terse, high-signal chat | Compresses the discuss interview's phrasing (keeps all substance). |
-
-If neither is installed, super-exec runs the full workflow anyway and tells you what it skipped.
-
-### If superpowers is also installed
-
-super-exec and superpowers overlap — both try to drive feature work. Where they overlap (discuss / plan / build / verify / review / PR), super-exec asserts best-effort precedence: its workflow drives those steps, and superpowers stays available for what super-exec doesn't cover (e.g. debugging). No setup is needed for this to work.
-
-**Optional:** To remove the overlap entirely, you can disable superpowers in projects where you use super-exec via `/plugin` or per-project settings. This is only a recommendation — super-exec works fine with superpowers left enabled. See ADR 0004 for the full coexistence rationale.
-
----
-
-## The workflow, from your side
-
-Two sessions, one hard boundary at **plan → build**.
-
-```mermaid
-flowchart TD
-    A([🧑 You: /se-discuss]) --> B[super-exec: interview you to a shared spec]
-    B --> G1{{🧑 You: approve the spec — super-exec commits it}}
-    G1 --> C[super-exec: auto-continues to planning]
-    C --> D[super-exec: design architecture + verification, bind repo skills]
-    D --> G2{{🧑 You: review the plan}}
-    G2 --> E([🧑 You: fresh session, /se-exec])
-    E --> F[super-exec: build → verify → review, task by task]
-    F --> G3{{🧑 You: final review + 'create a draft PR?' — Auto-PR OFF only}}
-    G3 --> H([📦 Pull request draft])
-```
-
-During discuss, super-exec starts branch/ticket lookup in the background so the interview does not wait on git or Atlassian. After the WHAT is clear, it asks once for any missing Jira ticket and shows the proposed branch name. It writes the uncommitted spec file for your review. No branch is created and nothing is committed until you approve the spec; then it creates/switches to the confirmed branch, commits the approved artifacts, and continues into planning.
-
-The **discuss → plan** hop is automatic: once you approve the spec, super-exec commits it and continues
-straight into planning in the same session. The only hard boundary is **plan → build** — start `/se-exec`
-in a fresh session. At build entry you set two toggles: *review before each commit?* and *Auto-PR?*
-With *review before each commit?* **OFF**, that one choice is your standing go-ahead — the agent
-commits each task automatically without stopping to ask. Pending human reviews still block commits
-until you approve. The second is the "human in the loop?" switch — Auto-PR **ON** skips the
-final review and opens the PR automatically; **OFF** stops for your work-review and asks whether to open
-a draft PR (a "no" ends the session with no PR).
-
-### Who does what
-
-| 🧑 You give / decide | 🤖 super-exec automates |
+| Plugin | Adds |
 |---|---|
-| Run `/se-discuss`, `/se-plan`, `/se-exec` | Researches the codebase via subagents (instead of asking) |
-| Answer the interview (the **WHAT**) | Drafts the spec to a fixed template; sharpens terms |
-| Resolve open questions in planning (the **HOW**) | Designs architecture + verification |
-| Confirm the ticket / branch once during discuss | Creates the confirmed branch only after spec approval |
-| **Review + approve** the spec & plan | Commits the spec; implements each task in subagents |
-| Set 2 toggles once (review before each commit? Auto-PR?) | Verifies with real evidence (runner runs it, a strong model judges) |
-| **Review** the work at the final checkpoint (Auto-PR OFF) | Reviews its own code, fixes, commits, then opens the PR draft |
+| `impeccable` | UI design, build, and critique help for frontend work. |
+| `caveman` | Terse, high-signal agent communication. |
 
-The heavy, context-burning work (builds, tests, searches, reviews) runs in throwaway subagents — your
-session stays lean. Nothing claims "done" without shown evidence, and nothing commits while a human
-review is pending.
+If `superpowers` is also installed, super-exec is intended to drive the feature workflow where the two overlap. superpowers remains useful for areas outside that workflow, such as standalone debugging.
 
----
+## Workflow
 
-## What's in the box
+### 1. Discuss
 
-**Four things you invoke** (type `/name`, or just describe the work and the model picks it up):
+Run `/se-discuss` when starting a new feature or behavior change. The agent interviews you until the problem, goals, non-goals, requirements, domain terms, and key decisions are clear. The output is a spec you review before the workflow moves on.
 
-| Tool | What it does | When to use |
-|---|---|---|
-| **`/se-discuss`** | Design session. Interviews you to a shared spec (the WHAT only), with a docs-review checkpoint. | Starting a new feature or changing behavior. |
-| **`/se-plan`** | Plan session. Turns a committed spec into an architecture + verification plan; binds repo skills to tasks. Also re-enters an existing plan. | After a spec is committed, or to re-plan. |
-| **`/se-exec`** | Build session. Runs the execute→verify→review loops task by task, then opens the PR. Resumes from a handoff if context ran out. | After a plan is reviewed. Start in a fresh session. |
-| **`/se-pr-triage`** | Post-PR triage session. One round: triages review comments (Track A, human-gated approval before any reply or fix is pushed) and CI failures (Track B, autonomous investigation and resolution). Run after a PR is open and reviewers or CI have reported. Manual only — wrap in `/loop` for continuous watching. Not auto-chained from `se-pr`. | After a PR is open, when review comments or CI failures need processing. |
+### 2. Plan
 
-**Helpers it runs for you** (you don't invoke these directly):
+Planning turns the approved spec into an implementation and verification plan. It covers architecture, task shape, reuse opportunities, repo skills to invoke, and the evidence needed to prove the work. You review the plan before build work begins.
 
-| Skill | Role |
+### 3. Exec
+
+Run `/se-exec` in a fresh session when ready to build. The agent works task by task through implementation, verification, review, fixes, and PR preparation. It keeps the spec and plan as the source of truth for scope.
+
+### 4. PR / Triage
+
+The workflow can open a draft PR when the build is ready. After a PR exists, `/se-pr-triage` helps process review comments and CI failures without mixing post-PR work back into the build session.
+
+## Entrypoints
+
+| Entrypoint | Use it for |
 |---|---|
-| `se-verify` | Inner loop — runs the baseline + task verification and judges the evidence against spec + plan. |
-| `se-review` | Outer loop — architecture review → deep review (data-flow → reuse → consistency) → severity-tagged findings, with a realism filter. |
-| `se-pr` | PR creation only (the final review checkpoint lives in se-exec). Delegates to the repo's `create-pr` skill, or mirrors `pull_request_template.md`. |
-| `se-handoff` | Writes a resume handoff when the build session approaches its context limit. |
+| `/se-discuss` | Start from an idea, ticket, or desired change and produce a reviewed spec. |
+| `/se-plan` | Re-enter or revise planning for an existing spec. |
+| `/se-exec` | Build from a reviewed plan, verify the work, review it, and prepare the PR. |
+| `/se-pr-triage` | Handle review comments and CI failures after a PR is open. |
 
-Each skill keeps its bulky bits in sibling files it reads on demand — `branch-gate`, `branch-context`, `worktree`, and the
-spec / plan / PR / handoff templates. Skills are written in Claude Code language; Cursor users get a single
-one-way CC→Cursor translation table at `using-super-exec/references/cursor-tools.md`, which the SessionStart
-hook injects into context on Cursor so every subagent runs on an explicit model slug chosen by tier (the
-non-fast Composer for cheap/mid work, the strongest high-effort reasoning model for strong) instead of
-inheriting the session model.
+Most users start with `/se-discuss`, then follow the prompts. You can also describe the work naturally and let the agent choose the matching entrypoint.
 
----
+## Artifacts
 
-## Conventions: your repo always wins
+The durable team-facing artifact is the spec in `docs/specs/`. Local plans, handoffs, and session state live under `.super-exec/` and are not meant to be committed.
 
-For anything convention-bearing (branch, commit, PR, verification), super-exec follows **your repo's
-own skill first** (e.g. `git-new-branch`, `git-commit-message`, `create-pr`), then a detected repo
-pattern, then its own built-in default. It ships complete defaults so it works in a bare repo — but a
-repo with opinions overrides them, every time. Drop-in, no configuration.
+Detailed workflow contracts and implementation-specific behavior live in the source-of-truth files:
 
-For playwright, e2e, or browser verification, the verifier scans the target repo's local skills,
-uses the repo's local dev-server skill when present (or the plan's fallback command when absent),
-starts or confirms the server, waits for readiness, and only then runs the browser command. If no
-server startup path is known, browser/e2e verification blocks instead of pretending evidence exists.
-The evidence includes both server readiness and browser results.
+- `docs/specs/0001-core-workflow.md`
+- `plugin/skills/*/SKILL.md`
+- skill-owned templates and reference files under `plugin/skills/`
 
----
-
-## Where things live
-
-| Artifact | Location | Committed? |
-|---|---|---|
-| Spec | `docs/specs/NNNN-<feature>.md` | yes (you commit it at spec approval) |
-| ADR / glossary | `docs/adr/…`, `CONTEXT.md` | yes, sparingly |
-| Plan / handoff | `.super-exec/<feature>/<date>-<plan>/` | no — local, git-ignored |
-
-`NNNN` is the next available four-digit number in `docs/specs/`, found by scanning existing spec filenames and incrementing the highest prefix. Plans are local; teammates share only the spec. super-exec keeps `.super-exec/` out of git
-automatically — every session the SessionStart hook lists it in your repo-local, **uncommitted**
-`.git/info/exclude`, so nothing tool-specific ever lands in the team-shared `.gitignore`.
+Keep this README as a landing page. If workflow details change, update the spec and skills first.

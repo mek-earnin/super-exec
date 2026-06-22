@@ -27,9 +27,10 @@ Work through every step in order. Do not skip or reorder.
    - The **branch name** and **base branch**.
    - Any in-flight context or decisions made during the session that are not captured in committed code or the plan (e.g., a design choice that was resolved mid-task, a dependency discovered, a scope clarification from the user).
    - Any open follow-ups or deferred items that must not be forgotten.
+   Also make sure the plan's first `## Execution Checklist` section matches the completed-task state before writing the handoff; the handoff carries evidence, while the checklist carries quick status.
 
 3. **Write the handoff file.**
-   Path: `.super-exec/<feature>/<plan-dir>/handoff.md` — the same directory that contains the `plan.md` being executed. Never write to `.super-exec/` root or anywhere else. Use the `Write` tool. See [handoff-outline.md](./handoff-outline.md) for the required sections.
+   Path: `.super-exec/<feature>/<plan-dir>/handoff.md` — the same directory that contains the `plan.md` being executed. Never write to `.super-exec/` root or anywhere else. Use the `Write` tool. See [handoff-outline.md](./handoff-outline.md) for the required sections. The outline file is copy-pasteable markdown only: it starts directly with `# Handoff — <plan-dir name>`, has no outer explanatory heading/prose, and has no fenced code-block wrapper. Fill the sections in order. Under one `## Completed Tasks` section, repeat `### <task>` entries once per done task, include the full next-task description from `plan.md`, and write `None.` for empty in-flight decisions or follow-ups.
 
 4. **Pause and instruct the user.**
    After writing, output exactly these two instructions:
@@ -38,7 +39,7 @@ Work through every step in order. Do not skip or reorder.
    Do not continue executing plan tasks after writing the handoff.
 
 5. **Do NOT clear `.super-exec/active`.**
-   The session is resuming, not ending. `active` must remain set so the session-start hook and se-exec can detect the in-progress plan and load the handoff. Active-marker lifecycle: **se-pr** clears `active` on PR completion; **se-exec** clears it on the no-PR exit (Auto-PR OFF + the human declines the draft PR); **se-handoff never clears `active`.**
+   The session is resuming, not ending. `active` must remain set so the session-start hook and se-exec can detect the in-progress plan and load the handoff. Active-marker lifecycle: **se-pr** clears `active` on PR completion; **se-exec** clears it on the no-PR exit (Auto-PR OFF + the human declines the draft PR); **se-pr-triage** writes and clears `active` for its separate post-PR triage round; **se-handoff never clears `active`.**
 
 ---
 
