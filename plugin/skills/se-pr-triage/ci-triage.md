@@ -46,7 +46,7 @@ The failure is treated as flaky. Rerun the CI job exactly once using `gh run rer
 - If the rerun still fails while local continues to pass: the job is stuck or the flakiness is persistent but not locally reproducible. Escalate — record the job as needing human attention in the round report with a note that local passes but CI remains red after one rerun.
 
 **Local run fails:**
-The failure is real. Fix the code by dispatching an implementer subagent (mid tier) with the diagnosis as context, then clear the inner verification loop via `se-verify` and the outer review loop via `se-review`, exactly as a build task in `se-exec`. Once both loops are green, commit via `se-commit`, then push the commit to the PR branch via `git push` (the Track B executor subagent performs the push after `se-commit` completes). The push triggers CI to rerun.
+The failure is real. Fix the code by dispatching an implementer subagent (mid tier) with the diagnosis as context, then clear the inner verification loop via `/se-verify` and the outer review loop via `/se-review`, exactly as a build task in `se-exec`. Once both loops are green, commit via `/se-commit`, then push the commit to the PR branch via `git push` (the Track B executor subagent performs the push after `se-commit` completes). The push triggers CI to rerun.
 
 - If CI goes green after the push: record verdict `fixed` with links to the pushed commit and the check run.
 - If CI remains red after the fix-and-push attempt: record verdict `escalated` — the failure cannot be made green and needs human attention.
@@ -56,7 +56,7 @@ Escalate immediately. Do not attempt a blind fix or a speculative rerun. Record 
 
 ### Lint, type-check, and unit failures (non-test jobs)
 
-These failures have a deterministic source in the checked-in code. Fix the flagged issues directly — dispatch an implementer subagent with the failure output as context, verify via `se-verify` and `se-review`, commit via `se-commit`, and push.
+These failures have a deterministic source in the checked-in code. Fix the flagged issues directly — dispatch an implementer subagent with the failure output as context, verify via `/se-verify` and `/se-review`, commit via `/se-commit`, and push.
 
 ### PR-title validation failure
 
@@ -64,7 +64,7 @@ The PR title does not match the required format (typically a conventional-commit
 
 ### SonarCloud quality gate failure
 
-The SonarCloud gate has flagged new issues (code smells, bugs, vulnerabilities, or coverage drops) introduced by this PR. Read the findings from the SonarCloud status comment (`get_comments`). Fix each flagged issue at the source via the same implementer → `se-verify` → `se-review` → `se-commit` → push flow.
+The SonarCloud gate has flagged new issues (code smells, bugs, vulnerabilities, or coverage drops) introduced by this PR. Read the findings from the SonarCloud status comment (`get_comments`). Fix each flagged issue at the source via the same implementer → `/se-verify` → `/se-review` → `/se-commit` → push flow.
 
 If a finding is a false positive that cannot be suppressed without human input (for example, a suppression that requires a SonarCloud project admin action), escalate that specific finding and continue fixing the others.
 
@@ -72,7 +72,7 @@ If a finding is a false positive that cannot be suppressed without human input (
 
 Cycode is a security scanner. Treat its findings with extra caution.
 
-**Fix when the remedy is clear:** a vulnerable dependency with a known patched version, a code quality finding with an obvious safe fix, or a SAST finding that can be resolved by a code change that does not require special access. Apply the fix via implementer → `se-verify` → `se-review` → `se-commit` → push.
+**Fix when the remedy is clear:** a vulnerable dependency with a known patched version, a code quality finding with an obvious safe fix, or a SAST finding that can be resolved by a code change that does not require special access. Apply the fix via implementer → `/se-verify` → `/se-review` → `/se-commit` → push.
 
 **Escalate when ambiguous or when resolution requires a human action.** Specifically: any finding that involves a detected secret or credential (the credential must be rotated, which is a human action — an agent must never attempt to rotate credentials autonomously); any SAST finding where the safe remediation is unclear; any dependency finding where the only path forward is to accept a breaking change in a transitive dependency. Record each such finding in the round report with enough detail for a human to act, and direct the human to `#help-security` on Slack as the appropriate channel.
 
@@ -81,7 +81,7 @@ Cycode is a security scanner. Treat its findings with extra caution.
 ## 4. Things Track B never does
 
 - **Never posts a reply to the PR.** No in-thread comment, no top-level PR comment, no status comment. The resolution of a Track B failure is a green check, not a thread reply. If escalation is necessary, it appears in the end-of-round report produced by the SKILL.md controller — not as a PR comment.
-- **Never skips the subagent dispatch model.** The Track B executor itself is a subagent. When it needs to fix code, it dispatches a further implementer subagent (mid tier), not inline edits. `se-verify`, `se-review`, and `se-commit` are invoked as documented in their own skills.
+- **Never skips the subagent dispatch model.** The Track B executor itself is a subagent. When it needs to fix code, it dispatches a further implementer subagent (mid tier), not inline edits. `/se-verify`, `/se-review`, and `/se-commit` are invoked as documented in their own skills.
 - **Never reruns a job more than once for the same failure.** One rerun per flaky job per round. A second rerun that is still red is an escalation, not another rerun.
 - **Never fixes a Cycode credential finding.** Escalate with detail and direct the human to `#help-security`.
 

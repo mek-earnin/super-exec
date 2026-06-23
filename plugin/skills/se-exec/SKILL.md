@@ -19,9 +19,10 @@ and `started: <current UTC ISO-8601>` while you **preserve any existing `active_
 merged safely, defer the marker write until step 1 selects the plan; do not replace the file with a
 minimal marker that drops `active_plan`. This makes the enforcement guards live for the session —
 including the hard commit-block while a review gate is open. Existence + mtime are what the hooks
-read; the stale-marker decision is a model-judged heuristic with no fixed TTL. **Do not commit it**
-— `.super-exec/` is gitignored. Behavior is identical for manual and auto invocation. If invoked
-with `--worktree`, run the build in an isolated worktree (load `${CLAUDE_SKILL_DIR}/worktree.md`
+read; the stale-marker decision is a model-judged heuristic with no fixed TTL. **Immediately after
+writing the marker, invoke `/se-local-ignore`.** Behavior is identical for manual and auto
+invocation. If invoked
+with `--worktree`, run the build in an isolated worktree (load [@./worktree.md](./worktree.md)
 on demand). If manual invocation includes an explicit plan path — either a `plan.md` file path or a
 plan directory containing `plan.md` — use that exact plan and skip the plan-confirmation prompt. If
 the path cannot be resolved to `plan.md`, stop and ask for the corrected path. If no explicit path is
@@ -135,15 +136,15 @@ Complete every item in order. Do not skip or reorder steps.
 
   - **6b. Parallelism rule.** Independent tasks that touch **completely disjoint file sets** may be dispatched in parallel using the `Task` tool. Any two tasks that share even one file MUST run sequentially. When in doubt, run sequentially.
 
-  - **6c. Invoke se-verify.** Pass the task description and the plan's verification design (baseline commands + task-specific method). se-verify owns the runner→judge loop and reports one of: **inner-loop-green**, or **limitation-blocked** (the spec is not achievable as written — a real constraint, not a fixable bug — see step 6e).
+  - **6c. Invoke `/se-verify`.** Pass the task description and the plan's verification design (baseline commands + task-specific method). se-verify owns the runner→judge loop and reports one of: **inner-loop-green**, or **limitation-blocked** (the spec is not achievable as written — a real constraint, not a fixable bug — see step 6e).
 
   - **6d. Inner-loop-green is confirmed — proceed to the commit step.**
 
   - **6e. Limitation escalation (only when se-verify reports limitation-blocked).** The divergence is an *implementation limitation*, not an ordinary bug. The spec is authoritative — do NOT silently rewrite it. Resolve in this order:
     1. **Try a workaround** that still satisfies the spec's *intent* (dispatch an implementer with the `Task` tool, passing the limitation + the intent to preserve). If a workaround passes verification, apply it and return to the commit step — the spec is unchanged.
     2. **No workaround** → branch on the *Auto-PR* toggle:
-       - **Auto-PR OFF (human in the loop):** STOP and use `AskUserQuestion` to ask the user — state the spec requirement, the limitation, and your recommendation. The answer may change the spec (WHAT-only) and the implementation. If the change is architectural, recommend `/se-plan` re-entry; otherwise update the spec and the code inline, then re-verify. On approval, commit the spec change via **`se-commit`** (pass the spec / ADR paths), unless declined / gitignored.
-       - **Auto-PR ON (no human in the loop):** the agent amends the spec **itself** to the **closest achievable** behavior and annotates the spec's *Decisions* section — *"Due to `<limitation>`, cannot achieve `<original behavior>`; closest achievable is `<X>`."* — WHAT-only, no code. Commit the spec change via **`se-commit`** (pass the spec file path), rebuild the task to the revised spec, and re-verify. No interrupt. The amendment lands in the PR the human reviews.
+       - **Auto-PR OFF (human in the loop):** STOP and use `AskUserQuestion` to ask the user — state the spec requirement, the limitation, and your recommendation. The answer may change the spec (WHAT-only) and the implementation. If the change is architectural, recommend `/se-plan` re-entry; otherwise update the spec and the code inline, then re-verify. On approval, commit the spec change via **`/se-commit`** (pass the spec / ADR paths), unless declined / gitignored.
+       - **Auto-PR ON (no human in the loop):** the agent amends the spec **itself** to the **closest achievable** behavior and annotates the spec's *Decisions* section — *"Due to `<limitation>`, cannot achieve `<original behavior>`; closest achievable is `<X>`."* — WHAT-only, no code. Commit the spec change via **`/se-commit`** (pass the spec file path), rebuild the task to the revised spec, and re-verify. No interrupt. The amendment lands in the PR the human reviews.
 
 - [ ] **7. Commit step.**
 
@@ -153,26 +154,26 @@ Complete every item in order. Do not skip or reorder steps.
     3. **WAIT** for human approval.
     4. Clear `.super-exec/gate-open` before proceeding.
 
-  - Commit via **`se-commit`**, passing the explicit list of files this task's implementer reported touching (one commit per task). se-commit owns all commit mechanics — staging isolation, the message, and the runner-subagent dispatch; the controller issues no git commands inline.
+  - Commit via **`/se-commit`**, passing the explicit list of files this task's implementer reported touching (one commit per task). se-commit owns all commit mechanics — staging isolation, the message, and the runner-subagent dispatch; the controller issues no git commands inline.
 
   - When review-before-commit is **OFF**, commit immediately on inner-loop-green without seeking per-commit approval — the OFF toggle (step 4) is the user's standing authorization, so each per-task commit is user-requested, not proactive. Pausing to ask "may I commit?" here is a defect. Per-commit approval applies only on the ON path above.
 
-- [ ] **8. Outer loop — invoke se-review.** se-review performs the arch-gate, deep-review, and severity-tagging pass on the committed task.
+- [ ] **8. Outer loop — invoke `/se-review`.** se-review performs the arch-gate, deep-review, and severity-tagging pass on the committed task.
   - **Critical or Important** findings → re-enter the inner loop (step 6) to fix; a **fresh reviewer** re-reviews from scratch after fixes.
   - **Minor** findings → reported, non-blocking.
   - Loop until a fresh reviewer declares the task clean.
   - After the task is committed and outer-loop-clean, update the native task/todo tool first, then update only that task's checkbox in `plan.md` `## Execution Checklist` from `[ ]` to `[x]`. Do not edit any other plan content except frontmatter `status` updates described in this checklist.
 
-- [ ] **9. Context hygiene — monitor throughout.** The controller monitors its own context depth continuously using a **model-judged heuristic** (no fixed token count). When the controller judges it is approaching a context limit mid-build, invoke **se-handoff** immediately to write `handoff.md`, then pause and instruct the user to `/clear` and re-run `/se-exec`. Do NOT continue past the limit hoping to finish.
+- [ ] **9. Context hygiene — monitor throughout.** The controller monitors its own context depth continuously using a **model-judged heuristic** (no fixed token count). When the controller judges it is approaching a context limit mid-build, invoke **`/se-handoff`** immediately to write `handoff.md`, then pause and instruct the user to `/clear` and re-run `/se-exec`. Do NOT continue past the limit hoping to finish.
 
 - [ ] **10. All tasks clean — final spec-match assertion, then the PR decision.** When every executable task is inner-loop-green, committed, and outer-loop-clean, first confirm the reviewer's **final spec-match assertion** (does the whole built behavior still match the spec? — a cross-task-drift backstop; a mismatch re-enters the inner loop or, if a limitation, step 6e). Then branch on the **Auto-PR** toggle; the `Final review / PR decision` checklist item maps to this step 10 only:
-  - **Auto-PR ON** → no final review. Mark the `Final review / PR decision` item complete in the native task/todo tool first, sync the plan checklist, update `status` to `completed`, then invoke **se-pr** directly; it creates the PR and clears `.super-exec/active` on completion.
+  - **Auto-PR ON** → no final review. Mark the `Final review / PR decision` item complete in the native task/todo tool first, sync the plan checklist, update `status` to `completed`, then invoke **`/se-pr`** directly; it creates the PR and clears `.super-exec/active` on completion.
   - **Auto-PR OFF** → run the final human review:
     1. Write `.super-exec/gate-open` (commits are blocked while it exists).
     2. Present the work for final review (branch + commit list + summary + any captured evidence — via a runner subagent dispatched with `Task`, never `git` inline) and **WAIT** for the human to resolve the review.
     3. Once resolved, use `AskUserQuestion` to ask: **"Create a draft PR?"**
        - **No** → mark the `Final review / PR decision` item complete in the native task/todo tool first, sync the plan checklist, update `status` to `completed`, clear `.super-exec/gate-open`, then clear `.super-exec/active`. The session ends: the work stays committed on the branch, no PR. (se-exec owns clearing `active` on this no-PR exit.)
-       - **Yes** → mark the `Final review / PR decision` item complete in the native task/todo tool first, sync the plan checklist, update `status` to `completed`, clear `.super-exec/gate-open`, then invoke **se-pr** (which creates the draft PR and clears `.super-exec/active` on completion).
+       - **Yes** → mark the `Final review / PR decision` item complete in the native task/todo tool first, sync the plan checklist, update `status` to `completed`, clear `.super-exec/gate-open`, then invoke **`/se-pr`** (which creates the draft PR and clears `.super-exec/active` on completion).
 
 ---
 
@@ -184,7 +185,7 @@ Implement **only** what the plan specifies. Do not add extra tests, helper utili
 
 ## Worktree Mode
 
-No worktrees by default. If and only if the user passed **`--worktree`** at invocation: load [`worktree.md`](./worktree.md) on demand (read via `${CLAUDE_SKILL_DIR}/worktree.md`), then follow it for worktree creation, subagent path-passing, and teardown. Apply the plan-frontmatter `branch` check to the main checkout before worktree creation, then let the worktree setup own branch checkout/creation; do not reapply the main-checkout branch mismatch after the worktree exists. The `.super-exec/` markers always live in the main repo (`CLAUDE_PROJECT_DIR`), not the worktree.
+No worktrees by default. If and only if the user passed **`--worktree`** at invocation: load [@./worktree.md](./worktree.md) on demand, then follow it for worktree creation, subagent path-passing, and teardown. Apply the plan-frontmatter `branch` check to the main checkout before worktree creation, then let the worktree setup own branch checkout/creation; do not reapply the main-checkout branch mismatch after the worktree exists. The `.super-exec/` markers always live in the main repo (`CLAUDE_PROJECT_DIR`), not the worktree.
 
 ---
 
@@ -215,6 +216,6 @@ Dispatch all subagents with the `Task` tool. Resolve tier aliases from the `se-s
 | "I'll add a couple of extra tests / a helper utility while I'm here." | Add unrequested tests, helpers, documentation, or any code not specified in the plan. | YAGNI. Only what the plan specifies. Extra additions go into a follow-up task or a new plan — not this session. |
 | "I'll commit now and show the diff after." | Commit during the review-before-commit gate without writing `.super-exec/gate-open` first and waiting for human approval. | Write `.super-exec/gate-open`, show the diff and proposed message, WAIT for explicit approval, then clear `.super-exec/gate-open`, then commit. The gate is not optional when review-before-commit is ON. |
 | "Better ask the human before committing this task — committing unprompted feels too proactive." | Pause to request per-commit approval when review-before-commit is OFF (often because a host agent policy says "only commit when the user asks"). | The OFF toggle IS the user's explicit standing authorization (step 4): each per-task commit is user-requested, not proactive. Commit on inner-loop-green without re-asking. Per-commit approval applies ONLY when review-before-commit is ON (write `gate-open`, wait). |
-| "I'll just keep going — I can probably finish before context runs out." | Continue past the model-judged context limit without invoking se-handoff. | When the controller judges it is approaching a context limit, invoke se-handoff immediately, pause, and tell the user to `/clear` and re-run `/se-exec`. |
-| "I'll use a worktree to be safe — it can't hurt." | Create a git worktree without the user having passed `--worktree`. | No worktrees unless `--worktree` was explicitly passed at invocation. Load [`worktree.md`](./worktree.md) on demand only when that flag is present. |
+| "I'll just keep going — I can probably finish before context runs out." | Continue past the model-judged context limit without invoking se-handoff. | When the controller judges it is approaching a context limit, invoke `/se-handoff` immediately, pause, and tell the user to `/clear` and re-run `/se-exec`. |
+| "I'll use a worktree to be safe — it can't hurt." | Create a git worktree without the user having passed `--worktree`. | No worktrees unless `--worktree` was explicitly passed at invocation. Load [@./worktree.md](./worktree.md) on demand only when that flag is present. |
 | "The impeccable question keeps coming up — I'll re-ask each session." | Re-ask the impeccable opt-in even though an answer is already recorded in the plan or handoff. | Re-ask ONCE using `AskUserQuestion`, only if the record is genuinely absent. A prior "no" is a record. A handoff carrying the answer is a record. Do not re-ask. |

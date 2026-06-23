@@ -9,7 +9,7 @@ reads it on demand and follows the phase named by its checklist. It ensures:
 
 The local-only working dir (`.super-exec/`) is kept out of git automatically by the SessionStart hook, which lists it in the repo-local, uncommitted `.git/info/exclude` every session — so this gate makes **no** `.gitignore` edits.
 
-Git inspection is handled by `${CLAUDE_SKILL_DIR}/branch-context`, a lightweight read-only script that emits JSON. Mutating git commands (`fetch`, `checkout`) still run only in Phase C, after spec approval.
+Git inspection is handled by [@./branch-context](./branch-context), a lightweight read-only script that emits JSON. Mutating git commands (`fetch`, `checkout`) still run only in Phase C, after spec approval.
 
 ---
 
@@ -17,17 +17,17 @@ Git inspection is handled by `${CLAUDE_SKILL_DIR}/branch-context`, a lightweight
 
 Start this phase immediately, but do not wait for it before asking interview questions.
 
-- **Run branch context in the background.** Start `${CLAUDE_SKILL_DIR}/branch-context`, passing any user-provided ticket id / short description as arguments if available. Redirect output to `.super-exec/branch-context.json` when convenient, or keep the background job handle if the harness supports it. The script is read-only and returns JSON with current branch, inferred ticket, branch samples, convention hints, dirty state, and preferred base.
+- **Run branch context in the background.** Start [@./branch-context](./branch-context), passing any user-provided ticket id / short description as arguments if available. Redirect output to `.super-exec/branch-context.json` when convenient, or keep the background job handle if the harness supports it. The script is read-only and returns JSON with current branch, inferred ticket, branch samples, convention hints, dirty state, and preferred base.
 - **If a ticket is already known and Atlassian MCP is available, fetch ticket context in parallel.** Use the ticket title/description to seed the interview and later branch naming. If Atlassian MCP is unavailable, do not interrupt yet; defer the decision to Phase B.
 - **Continue the interview.** Do not ask for a ticket or branch name at session start unless the ticket is required to understand the user's first request.
 
-If background shell work is unavailable, skip the wait and run `${CLAUDE_SKILL_DIR}/branch-context` at the first natural pause before Phase B.
+If background shell work is unavailable, skip the wait and run [@./branch-context](./branch-context) at the first natural pause before Phase B.
 
 ## Phase B: ticket + branch confirmation (after last WHAT question)
 
 Run this after the feature slug is stable and before writing the spec file.
 
-- **Read branch context.** If the background result is ready, read it. If not, wait briefly; if still unavailable, run `${CLAUDE_SKILL_DIR}/branch-context` synchronously now. Use the final feature slug as the source of truth for branch naming.
+- **Read branch context.** If the background result is ready, read it. If not, wait briefly; if still unavailable, run [@./branch-context](./branch-context) synchronously now. Use the final feature slug as the source of truth for branch naming.
 - **Resolve ticket once.** If a ticket was provided by the user, inferred from the current branch, or discovered from the prompt, use it. If no ticket is known, ask exactly once: "Do you have a Jira ticket for this task?" If the answer is no, record `NO_TICKET`.
 - **Use Atlassian MCP when possible.** If a ticket is known and Atlassian MCP is available, query it for the title/description and use that data to derive the branch summary. If MCP is unavailable, ask the user to either enable it or confirm the branch summary manually. Never fabricate ticket data.
 - **Resolve branch-name convention by precedence.** Follow the three-step precedence rule (see "Convention precedence" below). Surface the resolved convention before proposing the name.
@@ -45,7 +45,7 @@ Run this only after the user approves the already-written spec and the next acti
 - **If checkout would overwrite or conflict with any uncommitted change, stop and ask.** Never discard, stash, or rewrite the user's/spec changes silently. Present the conflicting paths and recommend the smallest safe recovery:
   - If the current HEAD is already the intended base (or the user accepts the base deviation), create the confirmed branch from the current HEAD so the approved uncommitted review artifacts remain in place.
   - Otherwise, ask the user to resolve the working-tree conflict manually or choose a different branch/base; do not proceed to commit until the confirmed branch contains the approved files.
-- **Then commit artifacts.** The approved `docs/specs/`, `CONTEXT.md`, or ADR files should already exist as uncommitted review artifacts. Only after this phase succeeds should `se-discuss` call `se-commit`.
+- **Then commit artifacts.** The approved `docs/specs/`, `CONTEXT.md`, or ADR files should already exist as uncommitted review artifacts. Only after this phase succeeds should `se-discuss` call `/se-commit`.
 
 > Ignoring `.super-exec/` is **not** this gate's job — the SessionStart hook already ensures it is in `.git/info/exclude` (local, uncommitted) every session. Do not edit `.gitignore` here.
 
@@ -66,7 +66,7 @@ The branch name is derived by applying these three checks in order. Stop at the 
 
 **The repo always wins. The bundled default only fills silence.**
 
-To detect a repo pattern: prefer the `recentBranches` and `conventionHint` fields from `${CLAUDE_SKILL_DIR}/branch-context`. If more evidence is needed, sample recent branch names and scan for a consistent prefix/separator scheme (e.g. `ENG-1234/short-description`, `type/ENG-1234-summary`). If two-thirds or more of recent branches share a structure, that structure is the detected pattern.
+To detect a repo pattern: prefer the `recentBranches` and `conventionHint` fields from [@./branch-context](./branch-context). If more evidence is needed, sample recent branch names and scan for a consistent prefix/separator scheme (e.g. `ENG-1234/short-description`, `type/ENG-1234-summary`). If two-thirds or more of recent branches share a structure, that structure is the detected pattern.
 
 ### Bundled default convention
 
@@ -102,7 +102,7 @@ Use only when neither (a) nor (b) applies.
 
 ## Helper + subagent dispatch
 
-- **`${CLAUDE_SKILL_DIR}/branch-context`** → read-only branch inspection and convention sampling. Run it directly; it replaces spawning a subagent just to inspect the current branch.
+- **[@./branch-context](./branch-context)** → read-only branch inspection and convention sampling. Run it directly; it replaces spawning a subagent just to inspect the current branch.
 - **Runner subagent** (mutating git execution, if the harness requires delegation) → script-runner / finder tier (see the `se-subagent` skill for the tier mapping). Dispatch it with the `Task` tool.
 - **Atlassian MCP** → invoke the Atlassian MCP directly. The MCP is optional; absence must degrade gracefully, not hard-fail.
 

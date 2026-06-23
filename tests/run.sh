@@ -1205,6 +1205,146 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Check 13 — se-local-ignore skill ownership + behavior
+# ---------------------------------------------------------------------------
+# The se-local-ignore skill is the single owner and guaranteed layer for keeping
+# .super-exec/ out of git (the SessionStart hook in Check 7 is only a best-effort
+# backup — see ADR 0002). This check enforces: the skill exists and is internal,
+# documents the canonical command, every driver skill applies it at activation,
+# and the canonical command is idempotent, ignores .super-exec/, and no-ops
+# outside a git repo.
+echo ""
+echo "Check 13: se-local-ignore skill ownership"
+
+li_skill="${REPO_ROOT}/plugin/skills/se-local-ignore/SKILL.md"
+li_script="${REPO_ROOT}/plugin/skills/se-local-ignore/ensure-local-ignore"
+
+if [ -f "$li_skill" ]; then
+  pass "se-local-ignore/SKILL.md exists"
+else
+  fail "se-local-ignore/SKILL.md missing"
+fi
+
+if grep -qxF 'user-invocable: false' "$li_skill" 2>/dev/null; then
+  pass "se-local-ignore is internal (user-invocable: false)"
+else
+  fail "se-local-ignore must declare user-invocable: false"
+fi
+
+# The skill bundles its own script and invokes it via a relative path
+# (the branch-context pattern), rather than inlining the raw command.
+if [ -x "$li_script" ]; then
+  pass "se-local-ignore bundles an executable ensure-local-ignore script"
+else
+  fail "se-local-ignore/ensure-local-ignore missing or not executable"
+fi
+
+if grep -qF '@./ensure-local-ignore' "$li_skill" 2>/dev/null \
+   && ! grep -qF 'CLAUDE_SKILL_DIR' "$li_skill" 2>/dev/null; then
+  pass "se-local-ignore invokes its bundled script via an @./ mention"
+else
+  fail "se-local-ignore must invoke @./ensure-local-ignore without \${CLAUDE_SKILL_DIR}"
+fi
+
+if grep -qF 'git check-ignore -q .super-exec/' "$li_script" 2>/dev/null; then
+  pass "ensure-local-ignore uses the canonical check-ignore guard"
+else
+  fail "ensure-local-ignore missing canonical 'git check-ignore -q .super-exec/' guard"
+fi
+
+# Every driver skill (those that write .super-exec/active) must invoke /se-local-ignore.
+for driver in se-discuss se-plan se-exec se-pr-triage; do
+  ds="${REPO_ROOT}/plugin/skills/${driver}/SKILL.md"
+  if grep -qF '/se-local-ignore' "$ds" 2>/dev/null; then
+    pass "${driver} invokes /se-local-ignore at activation"
+  else
+    fail "${driver} does not invoke /se-local-ignore"
+  fi
+done
+
+# Functional: run the ACTUAL bundled script. It must be idempotent, ignore the
+# dir, never write .gitignore, and no-op outside a git repo.
+if ! command -v git >/dev/null 2>&1; then
+  fail "git not available — cannot test ensure-local-ignore behavior"
+elif [ ! -x "$li_script" ]; then
+  fail "ensure-local-ignore not executable — cannot run behavior tests"
+else
+  litmp=$(mktemp -d)
+  lirepo="${litmp}/repo"
+  mkdir -p "$lirepo"
+  ( cd "$lirepo" && git init -q ) 2>/dev/null || true
+
+  # Run three times via CLAUDE_PROJECT_DIR (the resolution the script uses).
+  env -i PATH="$PATH" HOME="${HOME:-/tmp}" CLAUDE_PROJECT_DIR="$lirepo" "$li_script" || fail "ensure-local-ignore exited nonzero (run 1)"
+  env -i PATH="$PATH" HOME="${HOME:-/tmp}" CLAUDE_PROJECT_DIR="$lirepo" "$li_script" || fail "ensure-local-ignore exited nonzero (run 2)"
+  env -i PATH="$PATH" HOME="${HOME:-/tmp}" CLAUDE_PROJECT_DIR="$lirepo" "$li_script" || fail "ensure-local-ignore exited nonzero (run 3)"
+
+  li_count=$(grep -cxF '.super-exec/' "${lirepo}/.git/info/exclude" 2>/dev/null || true)
+  [ -n "$li_count" ] || li_count=0
+  if [ "$li_count" = "1" ]; then
+    pass "ensure-local-ignore is idempotent across 3 runs (one exclude line)"
+  else
+    fail "ensure-local-ignore not idempotent: .super-exec/=${li_count} (expected 1)"
+  fi
+
+  ( cd "$lirepo" && mkdir -p .super-exec && touch .super-exec/active ) 2>/dev/null || true
+  if ( cd "$lirepo" && git check-ignore -q .super-exec/active ) 2>/dev/null; then
+    pass "git ignores .super-exec/ after ensure-local-ignore runs"
+  else
+    fail "git does not ignore .super-exec/ after ensure-local-ignore runs"
+  fi
+
+  # Does not touch the team-shared .gitignore.
+  if [ ! -e "${lirepo}/.gitignore" ]; then
+    pass "ensure-local-ignore never writes the team-shared .gitignore"
+  else
+    fail "ensure-local-ignore wrongly created/edited .gitignore"
+  fi
+
+  # No-op outside a git repo: no .git created, no exclude written.
+  linogit="${litmp}/notgit"
+  mkdir -p "$linogit"
+  env -i PATH="$PATH" HOME="${HOME:-/tmp}" CLAUDE_PROJECT_DIR="$linogit" "$li_script" || fail "ensure-local-ignore exited nonzero (no-git)"
+  if [ ! -e "${linogit}/.git" ]; then
+    pass "ensure-local-ignore is a no-op outside a git repo"
+  else
+    fail "ensure-local-ignore created .git artifacts outside a git repo"
+  fi
+
+  rm -rf "$litmp"
+fi
+
+# ---------------------------------------------------------------------------
+# Check 14 — cursor-tools skill-bundled file path convention
+# ---------------------------------------------------------------------------
+# Skills reference bundled files by paths relative to the skill file.
+# cursor-tools.md documents how both harnesses resolve those paths.
+echo ""
+echo "Check 14: cursor-tools skill-bundled file path convention"
+
+cursor_tools_ref="${REPO_ROOT}/plugin/skills/using-super-exec/references/cursor-tools.md"
+if grep -qF '@./<file>' "$cursor_tools_ref" 2>/dev/null \
+   && grep -qF "loaded SKILL.md's own location" "$cursor_tools_ref" 2>/dev/null; then
+  pass "cursor-tools.md documents skill-bundled file path convention"
+else
+  fail "cursor-tools.md missing skill-bundled file path convention"
+fi
+
+# ---------------------------------------------------------------------------
+# Check 15 — no skill body still uses ${CLAUDE_SKILL_DIR}
+# ---------------------------------------------------------------------------
+echo ""
+echo "Check 15: no skill body references \${CLAUDE_SKILL_DIR}"
+
+skill_claude_skill_dir_hits=$(grep -rlF 'CLAUDE_SKILL_DIR' "${REPO_ROOT}/plugin/skills/" 2>/dev/null \
+  | grep -vF 'using-super-exec/references/cursor-tools.md' || true)
+if [ -z "$skill_claude_skill_dir_hits" ]; then
+  pass "no skill body references \${CLAUDE_SKILL_DIR}"
+else
+  fail "skill bodies still contain \${CLAUDE_SKILL_DIR}: ${skill_claude_skill_dir_hits}"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""

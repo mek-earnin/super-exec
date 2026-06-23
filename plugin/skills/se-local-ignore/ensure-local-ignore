@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# se-local-ignore/ensure-local-ignore
+#
+# Keep super-exec's local-only working dir (.super-exec/) out of git via the
+# repo-local, UNCOMMITTED .git/info/exclude — never the team-shared .gitignore
+# (ADR 0002). Idempotent, a no-op outside a git repo, and it never touches
+# .gitignore. Always exits 0 so callers can run it unconditionally at session
+# activation.
+#
+# Repo resolution mirrors branch-context: CLAUDE_PROJECT_DIR, then
+# CURSOR_PROJECT_DIR, then the current working directory.
+
+set -uo pipefail
+
+project_dir="${CLAUDE_PROJECT_DIR:-${CURSOR_PROJECT_DIR:-$PWD}}"
+cd "$project_dir" 2>/dev/null || exit 0
+
+# Already ignored (by the exclude OR an existing .gitignore)? Nothing to do.
+git check-ignore -q .super-exec/ 2>/dev/null && exit 0
+
+# Resolve the repo-local exclude file (correct for worktrees/submodules too).
+exclude="$(git rev-parse --git-path info/exclude 2>/dev/null)" || exit 0
+[ -n "$exclude" ] || exit 0
+
+mkdir -p "$(dirname "$exclude")" 2>/dev/null || exit 0
+grep -qxF '.super-exec/' "$exclude" 2>/dev/null || printf '%s\n' '.super-exec/' >> "$exclude"
+
+exit 0

@@ -82,7 +82,7 @@ it against the spec and plan.
 
 Commits also happen in the worktree. The commit appears on the worktree's
 branch, not on the main checkout's branch. Worktree mode does **not** change
-how commits work — commit through **`se-commit`** exactly as in the main
+how commits work — commit through **`/se-commit`** exactly as in the main
 checkout. The only worktree-specific delta is that the runner subagent is
 given the **worktree path** as its working directory.
 

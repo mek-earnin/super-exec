@@ -123,7 +123,7 @@ Enforcement layers: strong directive language + red-flag tables + flowcharts in 
 | Plan(s) | `.super-exec/<feature>/<YYYY-MM-DD>-<plan-name>/plan.md` with plan frontmatter (`title`, `feature`, `branch`, `status`) | **no (gitignored)** | local |
 | Handoff / scratch | `.super-exec/<feature>/<…>/{handoff.md,scratch/}` | no | local |
 
-One long-lived spec per feature; many dated plans per feature (≈ one plan ≈ one execute session ≈ one PR). **The spec never references the plan** (plans are local; teammates have only specs). `NNNN` is the next available four-digit number in that specs directory (find the highest existing prefix and increment), while `<feature>` is the work's feature name — the same slug as the branch and `.super-exec/<feature>/` plan directory (a ≤6-word summary of the change), lowercase-kebab; it is **never** the repo/project/package name, and the tool halts to confirm with the user if a candidate slug collides with the project name. For build sessions, the branch source of truth is plan frontmatter `branch`; `.super-exec/active` is only the local resume pointer. The tool keeps `.super-exec/` out of git via the repo-local, **uncommitted** `.git/info/exclude` — written idempotently by the SessionStart hook on every session, so the local-only artifact gets a local-only ignore with no edit to the team-shared `.gitignore`. (See ADR 0002.)
+One long-lived spec per feature; many dated plans per feature (≈ one plan ≈ one execute session ≈ one PR). **The spec never references the plan** (plans are local; teammates have only specs). `NNNN` is the next available four-digit number in that specs directory (find the highest existing prefix and increment), while `<feature>` is the work's feature name — the same slug as the branch and `.super-exec/<feature>/` plan directory (a ≤6-word summary of the change), lowercase-kebab; it is **never** the repo/project/package name, and the tool halts to confirm with the user if a candidate slug collides with the project name. For build sessions, the branch source of truth is plan frontmatter `branch`; `.super-exec/active` is only the local resume pointer. The tool keeps `.super-exec/` out of git via the repo-local, **uncommitted** `.git/info/exclude`, so the local-only artifact gets a local-only ignore with no edit to the team-shared `.gitignore`. The `se-local-ignore` skill owns this and is applied by each driver skill at session activation (the guaranteed layer); the SessionStart hook does the same as a best-effort backup. (See ADR 0002.)
 
 ### Spec template
 
@@ -219,7 +219,8 @@ super-exec/
 │       ├── se-pr-triage/              # + ci-triage.md; post-PR review/CI triage
 │       ├── se-handoff/               # + handoff-outline.md
 │       ├── se-subagent/              # internal: model tiers + dispatch discipline (user-invocable: false)
-│       └── se-commit/                # internal: staging-isolated commits (user-invocable: false)
+│       ├── se-commit/                # internal: staging-isolated commits (user-invocable: false)
+│       └── se-local-ignore/         # internal: + ensure-local-ignore; keep .super-exec/ out of git via .git/info/exclude (user-invocable: false)
 ├── docs/specs/0001-core-workflow.md  # this spec (dogfood)
 ├── research/                         # gitignored, local-only
 └── README.md

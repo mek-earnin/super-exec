@@ -95,12 +95,14 @@ super-exec names model **tiers** by family alias so they never go stale (see the
 
 ---
 
-## Plugin root environment variables
+## Plugin & skill paths
 
 | Variable | Claude Code | Cursor |
 |---|---|---|
 | Plugin root directory | `CLAUDE_PLUGIN_ROOT` | `CURSOR_PLUGIN_ROOT` |
 | Project directory | `CLAUDE_PROJECT_DIR` | `CURSOR_PROJECT_DIR` |
+
+**Skill-bundled files:** Reference scripts and reference files beside a skill with the `@./<file>` file-mention form (e.g. `@./branch-context`, [@./worktree.md](./worktree.md) — link text `@./<file>`, link target `./<file>`). Both harnesses resolve that path from the loaded SKILL.md's own location — Claude Code exposes `${CLAUDE_SKILL_DIR}` for that directory internally; Cursor derives it from the loaded skill path. No path env var is exported to the agent shell, so never rely on `${CLAUDE_SKILL_DIR}` or `${CURSOR_PLUGIN_ROOT}` inside an agent bash command.
 
 ---
 
