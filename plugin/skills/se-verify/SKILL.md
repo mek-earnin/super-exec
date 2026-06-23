@@ -17,45 +17,72 @@ No task is ever reported complete on the strength of what the implementer said, 
 
 Complete every item in order. Do not skip or reorder steps. Do not advance past a step until it is confirmed done.
 
-- [ ] **1. Receive the task context.** Confirm you have in hand: (a) the task description from the plan, (b) the plan's **verification design** — specifically the recorded baseline commands (e.g. `lint:fix` + `type-check`, or `dotnet build`) and the task-specific verification method (test suite, browser check, endpoint call, or custom script). If either is missing, halt and ask se-exec to supply them before proceeding.
+- [ ] **1. Receive the task context**
+- [ ] **2. Dispatch the runner subagent**
+- [ ] **3. Collect the runner's evidence**
+- [ ] **4. Dispatch the judge subagent**
+- [ ] **5. If FAIL — dispatch the fixer subagent**
+- [ ] **6. If LIMITATION — report limitation-blocked**
+- [ ] **7. Report inner-loop-green**
 
-- [ ] **2. Dispatch the RUNNER subagent (cheap / script-runner tier).** See the `se-subagent` skill for the concrete model and dispatch details. Dispatch the subagent with the `Task` tool. Give the runner:
-  - The exact baseline commands from the plan's verification design. Run them first.
-  - The task-specific verification commands or steps from the plan's verification design. Run them second.
-  - For any playwright, e2e, or browser verification, the runner must first scan local repo skills (`.claude/skills/*/SKILL.md`, `.cursor/skills/*/SKILL.md`, `plugin/skills/*/SKILL.md`, or the harness's native skill-discovery output) for `local-dev-server`, `dev-server`, or equivalent instructions, then follow that skill before the browser/e2e command. If no dev-server skill exists, use the fallback dev-server command recorded in the plan. If neither exists, return structured evidence that no dev-server startup path exists and do not run browser/e2e against nothing. The runner must start or confirm the local dev server, wait for readiness (URL/port/log line), record server evidence (command or skill, URL, PID when started), run the browser/e2e check against that server, and tear down any server it started.
-  - An instruction to return **structured EVIDENCE only**: exit codes, pass/fail counts, relevant log excerpts, and — for UI tasks — screenshot file paths or DOM assertion results. No interpretation. No "it looks fine." Raw output is never echoed into the controller's context.
+---
 
-  **The runner executes. The controller never runs verification inline. Ever.**
+## 1. Receive the task context
 
-- [ ] **3. Collect the runner's evidence.** Wait for the runner to return. Accept only structured EVIDENCE — exit codes, counts, relevant log lines, file paths. If the runner returns an interpretation ("it passed") without hard evidence, reject it and re-dispatch the runner with an explicit instruction to include exit codes and output excerpts.
+Confirm you have in hand: (a) the task description from the plan, (b) the plan's **verification design** — specifically the recorded baseline commands (e.g. `lint:fix` + `type-check`, or `dotnet build`) and the task-specific verification method (test suite, browser check, endpoint call, or custom script). If either is missing, halt and ask se-exec to supply them before proceeding.
 
-- [ ] **4. Dispatch the JUDGE subagent (strong non-fast tier).** See the `se-subagent` skill for the concrete model. Dispatch the subagent with the `Task` tool. Supply the judge with:
-  - The task description from the plan.
-  - The acceptance criteria from the spec.
-  - The plan's verification design (what "pass" looks like for baseline and task-specific).
-  - The runner's evidence in full.
+## 2. Dispatch the runner subagent
 
-  Ask the judge one question: **does the evidence demonstrate that the baseline and the task-specific verification both pass, as required by the spec and plan?** The judge must render an explicit **PASS**, **FAIL**, or **LIMITATION** — not a hedge.
+See the `se-subagent` skill for the concrete model and dispatch details. Dispatch the subagent with the `Task` tool. Give the runner:
 
-  - **PASS**: evidence is green; proceed to step 7.
-  - **FAIL**: findings must be specific — which command failed, what the output showed, what must be fixed. Proceed to step 5.
-  - **LIMITATION**: the spec is unachievable as written (not a fixable bug — an architectural or environmental constraint makes it impossible). Missing dev-server startup instructions for required browser/e2e verification count as LIMITATION unless the evidence already identifies a concrete command the fixer can add safely. The judge must state clearly why the failure cannot be fixed by the fixer. Proceed to step 6 (limitation-blocked path).
+- The exact baseline commands from the plan's verification design. Run them first.
+- The task-specific verification commands or steps from the plan's verification design. Run them second.
+- For any playwright, e2e, or browser verification, the runner must first scan local repo skills (`.claude/skills/*/SKILL.md`, `.cursor/skills/*/SKILL.md`, `plugin/skills/*/SKILL.md`, or the harness's native skill-discovery output) for `local-dev-server`, `dev-server`, or equivalent instructions, then follow that skill before the browser/e2e command. If no dev-server skill exists, use the fallback dev-server command recorded in the plan. If neither exists, return structured evidence that no dev-server startup path exists and do not run browser/e2e against nothing. The runner must start or confirm the local dev server, wait for readiness (URL/port/log line), record server evidence (command or skill, URL, PID when started), run the browser/e2e check against that server, and tear down any server it started.
+- An instruction to return **structured EVIDENCE only**: exit codes, pass/fail counts, relevant log excerpts, and — for UI tasks — screenshot file paths or DOM assertion results. No interpretation. No "it looks fine." Raw output is never echoed into the controller's context.
 
-  **The runner runs; the judge decides. These are distinct roles and must never be collapsed into a single agent.**
+**The runner executes. The controller never runs verification inline. Ever.**
 
-- [ ] **5. If the judge renders FAIL — dispatch the FIXER subagent (implementer / mid tier, PINNED to `sonnet` on CC).** See the `se-subagent` skill. Dispatch the subagent with the `Task` tool. Give the fixer:
-  - The judge's specific failure finding(s) — not the full context, just what is broken and what the evidence showed.
-  - The relevant task description and acceptance criteria.
+## 3. Collect the runner's evidence
 
-  The fixer must not gold-plate, scope-creep, or rewrite unrelated code. It addresses the specific failure only.
+Wait for the runner to return. Accept only structured EVIDENCE — exit codes, counts, relevant log lines, file paths. If the runner returns an interpretation ("it passed") without hard evidence, reject it and re-dispatch the runner with an explicit instruction to include exit codes and output excerpts.
 
-  **Before re-dispatching the fixer**, confirm the judge's finding describes a fixable bug — not an implementation limitation. If the judge's FAIL finding indicates the spec is structurally unachievable, treat it as a LIMITATION and proceed to step 6 instead.
+## 4. Dispatch the judge subagent
 
-  After the fixer completes — return to step 2. Re-dispatch the runner. Re-collect evidence. Re-dispatch the judge. Repeat the loop until the judge renders an explicit PASS or LIMITATION.
+See the `se-subagent` skill for the concrete model. Dispatch the subagent with the `Task` tool. Supply the judge with:
 
-- [ ] **6. If the judge renders LIMITATION — report limitation-blocked.** Do not dispatch the fixer. Report **limitation-blocked** to se-exec. Include in the report: the task name, the judge's specific finding (why the spec is unachievable as written), and the evidence the runner returned. se-exec owns the limitation-escalation decision tree — workaround, amend spec to closest-achievable, or ask the human. The verifier's role ends here.
+- The task description from the plan.
+- The acceptance criteria from the spec.
+- The plan's verification design (what "pass" looks like for baseline and task-specific).
+- The runner's evidence in full.
 
-- [ ] **7. Report inner-loop-green.** Only when the judge has rendered an explicit PASS with the runner's evidence in hand, report: **inner-loop-green**. Include in the report: the task name, the baseline evidence summary (exit codes or counts), the task-specific evidence summary, and the judge's pass statement. This report is the only acceptable signal to se-exec that the task is verified.
+Ask the judge one question: **does the evidence demonstrate that the baseline and the task-specific verification both pass, as required by the spec and plan?** The judge must render an explicit **PASS**, **FAIL**, or **LIMITATION** — not a hedge.
+
+- **PASS**: evidence is green; proceed to step 7.
+- **FAIL**: findings must be specific — which command failed, what the output showed, what must be fixed. Proceed to step 5.
+- **LIMITATION**: the spec is unachievable as written (not a fixable bug — an architectural or environmental constraint makes it impossible). Missing dev-server startup instructions for required browser/e2e verification count as LIMITATION unless the evidence already identifies a concrete command the fixer can add safely. The judge must state clearly why the failure cannot be fixed by the fixer. Proceed to step 6 (limitation-blocked path).
+
+**The runner runs; the judge decides. These are distinct roles and must never be collapsed into a single agent.**
+
+## 5. If FAIL — dispatch the fixer subagent
+
+See the `se-subagent` skill. Dispatch the subagent with the `Task` tool. Give the fixer:
+
+- The judge's specific failure finding(s) — not the full context, just what is broken and what the evidence showed.
+- The relevant task description and acceptance criteria.
+
+The fixer must not gold-plate, scope-creep, or rewrite unrelated code. It addresses the specific failure only.
+
+**Before re-dispatching the fixer**, confirm the judge's finding describes a fixable bug — not an implementation limitation. If the judge's FAIL finding indicates the spec is structurally unachievable, treat it as a LIMITATION and proceed to step 6 instead.
+
+After the fixer completes — return to step 2. Re-dispatch the runner. Re-collect evidence. Re-dispatch the judge. Repeat the loop until the judge renders an explicit PASS or LIMITATION.
+
+## 6. If LIMITATION — report limitation-blocked
+
+Do not dispatch the fixer. Report **limitation-blocked** to se-exec. Include in the report: the task name, the judge's specific finding (why the spec is unachievable as written), and the evidence the runner returned. se-exec owns the limitation-escalation decision tree — workaround, amend spec to closest-achievable, or ask the human. The verifier's role ends here.
+
+## 7. Report inner-loop-green
+
+Only when the judge has rendered an explicit PASS with the runner's evidence in hand, report: **inner-loop-green**. Include in the report: the task name, the baseline evidence summary (exit codes or counts), the task-specific evidence summary, and the judge's pass statement. This report is the only acceptable signal to se-exec that the task is verified.
 
 ---
 

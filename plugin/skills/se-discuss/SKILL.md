@@ -33,21 +33,72 @@ still confirm and grill; never assume.
 
 Work through every item in order. Do NOT skip any item, even for simple work.
 
-- [ ] **1. Start branch context warm-up (non-blocking)** — Read [@./branch-gate.md](./branch-gate.md) and start only its **Phase A: read-only warm-up**. This runs [@./branch-context](./branch-context) in the background when the harness supports background shell work. Do NOT wait for Atlassian MCP or git branch sampling before asking the first interview question. Do NOT create or switch branches here.
-- [ ] **2. Explore project context via subagents** — Dispatch finder subagents (via the `Task` tool) to research: existing domain terms in `CONTEXT.md` (or `CONTEXT-MAP.md` for multi-context repos), related specs in `docs/specs/`, relevant source files, naming conventions, and any code that touches the area of work. Use `Read`, `Bash`, and `Grep` inside these subagents. Do NOT ask the user for anything that can be discovered by reading the codebase.
-- [ ] **3. New-vs-update detection** — Glob `docs/specs/` (and `docs/specs/<app>/` in monorepos). Match an existing spec by ticket key in the header AND by the feature slug after the numeric prefix. Confirm with the user via `AskUserQuestion`: "I found `docs/specs/0007-payment-retry.md` — is this an update to that spec, or a new one?" An **update** interviews only the **delta**; do not re-interview the whole spec.
-- [ ] **4. Relentless WHAT-only interview** — Ask one question at a time using `AskUserQuestion`. Wait for the answer before the next. Walk every branch of the decision tree. For each question, provide your recommended answer. Prefer multiple-choice options when the answer space is bounded. If a question can be answered by exploring the codebase, dispatch a finder subagent (via `Task`) instead of asking. Never ask about HOW — defer all implementation, architecture, and file-layout questions to se-plan.
-- [ ] **5. Term-sharpening** — When the user uses a vague or overloaded term, propose a precise canonical term immediately ("you said 'account' — do you mean Customer or User per our glossary?"). When a term conflicts with an existing `CONTEXT.md` entry, call it out and resolve it before continuing. Stress-test domain relationships with concrete scenarios ("so when a User has two active Memberships, which one gets the retry?").
-- [ ] **6. Derive the feature slug** — Produce a ≤6-word, lowercase-kebab summary of the **work itself** (e.g., `payment-retry-on-soft-decline`). The slug is NEVER the repo basename, the `package.json` `name`, or the app/project name. It is derived from the feature being discussed.
-- [ ] **7. Collision gate (CRITICAL)** — Before writing the spec file, compare the candidate slug against the repo basename AND the `package.json` `name` field. On a match, **HALT** and confirm the real feature with the user via `AskUserQuestion`. Do not silently name a spec after the project.
-- [ ] **8. Ticket + branch confirmation** — Complete [@./branch-gate.md](./branch-gate.md) **Phase B: ticket + branch confirmation** after the last WHAT question. If no ticket was provided or inferred, ask once: "Do you have a Jira ticket for this task?" If Atlassian MCP is available and a ticket is known, use it to fetch the ticket title/description and derive the branch name. Present the ticket value (`NO_TICKET` if none) and proposed branch name once; accept edits now. This is the only normal branch-name question.
-- [ ] **9. Write / update the spec file to the template** — Write `docs/specs/NNNN-<feature>.md` (or `docs/specs/<app>/NNNN-<feature>.md` in monorepos) using the `Write` or `Edit` tool, following [spec-template.md](./spec-template.md). The template file is copy-pasteable markdown only: it starts directly with the final artifact shape, has no outer explanatory heading/prose, has no instructional comments, and has no fenced code-block wrapper. Sections must appear in the template order with no additional sections. Replace header placeholders; use `NO_TICKET` only when the user confirms there is no Jira ticket, and set `Status:` to `active` for the current approved spec (`draft` only for an intentionally unapproved spec, `superseded` only for a replaced one). `NNNN` is the next available number in that directory (find the highest existing four-digit prefix and increment). For an update, keep the existing number and edit only the sections affected by the delta. The **Behavior / Requirements** section contains acceptance criteria with NO HOW; if a requirement implies an implementation (for example, "use a queue"), extract the underlying behavior ("retries must be durable across process restarts") and state that instead. Architecture and implementation details belong to se-plan. The **Domain terms** section contains entries mirrored to `CONTEXT.md` when new canonical terms were resolved. The **Decisions** section contains only hard, surprising, trade-off decisions; broader architecture decisions that meet the ADR gate go to `docs/adr/`. This uncommitted file is the review artifact; do NOT commit it before approval.
-- [ ] **10. Write deferred glossary / ADR review artifacts** — If the interview resolved new domain terms, add the intended `CONTEXT.md` edits now so the user can review them with the spec; create the file (via `Write`) only when the first term worth recording is identified. Offer an ADR only when ALL THREE hold: (a) the decision is hard to reverse, AND (b) it would be surprising without context, AND (c) it resulted from a real trade-off between alternatives. ADRs live at `docs/adr/NNNN-<slug>.md`; write them before approval only when offered and accepted so they are reviewable. Do NOT commit any of these files before approval.
-- [ ] **11. Spec self-review** — Before presenting the spec to the user, scan the written files for: placeholders (TBD / TODO / "to be determined"), internal contradictions, scope creep (any HOW that snuck in), **any code (fenced code blocks, file layout, scaffolding — the spec is WHAT-only)**, and ambiguity (any requirement readable two ways). Fix inline using `Edit`. Move any code/HOW to a note for se-plan and remove it from the spec. A requirement readable two ways must be made explicit — pick one reading and state it.
-- [ ] **12. Spec-approval gate (review/fix loop), then branch + commit + auto-chain to se-plan** — Present the finalized spec and ask via `AskUserQuestion`: **"Everything look good? Proceed to planning?"**
-  - **Change requested** → fix the written files using `Edit`, re-present, ask again via `AskUserQuestion`. Loop until the user explicitly approves (e.g. "looks good" / "yes" / "approve").
-  - **On approval** → complete [@./branch-gate.md](./branch-gate.md) **Phase C: create/switch confirmed branch**, then **commit the already-written approved artifacts** via **`/se-commit`**, passing the paths this approval touched (the spec + any ADR / `CONTEXT.md` file). **UNLESS** the user asked not to commit, or `docs/specs/` is gitignored (in either case, skip the commit and say so). The user's approval IS the authorization to create/switch to the already-confirmed branch and commit. Before approval, keep review artifacts uncommitted; after approval, commit only the approved paths. If branch switching conflicts with the approved uncommitted files, stop and ask rather than stashing, discarding, or rewriting them.
-  - **Then auto-invoke `/se-plan`** to continue the design session — the user does NOT type `/se-plan`. The discuss→plan transition is automatic; only the later plan→execute transition is a hard fresh-session boundary.
+- [ ] **1. Start branch context warm-up (non-blocking)**
+- [ ] **2. Explore project context via subagents**
+- [ ] **3. New-vs-update detection**
+- [ ] **4. Relentless WHAT-only interview**
+- [ ] **5. Term-sharpening**
+- [ ] **6. Derive the feature slug**
+- [ ] **7. Collision gate (CRITICAL)**
+- [ ] **8. Ticket + branch confirmation**
+- [ ] **9. Write / update the spec file to the template**
+- [ ] **10. Write deferred glossary / ADR review artifacts**
+- [ ] **11. Spec self-review**
+- [ ] **12. Spec-approval gate, then branch + commit + auto-chain to se-plan**
+
+---
+
+## 1. Start branch context warm-up (non-blocking)
+
+Read [@./branch-gate.md](./branch-gate.md) and start only its **Phase A: read-only warm-up**. This runs [@./branch-context](./branch-context) in the background when the harness supports background shell work. Do NOT wait for Atlassian MCP or git branch sampling before asking the first interview question. Do NOT create or switch branches here.
+
+## 2. Explore project context via subagents
+
+Dispatch finder subagents (via the `Task` tool) to research: existing domain terms in `CONTEXT.md` (or `CONTEXT-MAP.md` for multi-context repos), related specs in `docs/specs/`, relevant source files, naming conventions, and any code that touches the area of work. Use `Read`, `Bash`, and `Grep` inside these subagents. Do NOT ask the user for anything that can be discovered by reading the codebase.
+
+## 3. New-vs-update detection
+
+Glob `docs/specs/` (and `docs/specs/<app>/` in monorepos). Match an existing spec by ticket key in the header AND by the feature slug after the numeric prefix. Confirm with the user via `AskUserQuestion`: "I found `docs/specs/0007-payment-retry.md` — is this an update to that spec, or a new one?" An **update** interviews only the **delta**; do not re-interview the whole spec.
+
+## 4. Relentless WHAT-only interview
+
+Ask one question at a time using `AskUserQuestion`. Wait for the answer before the next. Walk every branch of the decision tree. For each question, provide your recommended answer. Prefer multiple-choice options when the answer space is bounded. If a question can be answered by exploring the codebase, dispatch a finder subagent (via `Task`) instead of asking. Never ask about HOW — defer all implementation, architecture, and file-layout questions to se-plan.
+
+## 5. Term-sharpening
+
+When the user uses a vague or overloaded term, propose a precise canonical term immediately ("you said 'account' — do you mean Customer or User per our glossary?"). When a term conflicts with an existing `CONTEXT.md` entry, call it out and resolve it before continuing. Stress-test domain relationships with concrete scenarios ("so when a User has two active Memberships, which one gets the retry?").
+
+## 6. Derive the feature slug
+
+Produce a ≤6-word, lowercase-kebab summary of the **work itself** (e.g., `payment-retry-on-soft-decline`). The slug is NEVER the repo basename, the `package.json` `name`, or the app/project name. It is derived from the feature being discussed.
+
+## 7. Collision gate (CRITICAL)
+
+Before writing the spec file, compare the candidate slug against the repo basename AND the `package.json` `name` field. On a match, **HALT** and confirm the real feature with the user via `AskUserQuestion`. Do not silently name a spec after the project.
+
+## 8. Ticket + branch confirmation
+
+Complete [@./branch-gate.md](./branch-gate.md) **Phase B: ticket + branch confirmation** after the last WHAT question. If no ticket was provided or inferred, ask once: "Do you have a Jira ticket for this task?" If Atlassian MCP is available and a ticket is known, use it to fetch the ticket title/description and derive the branch name. Present the ticket value (`NO_TICKET` if none) and proposed branch name once; accept edits now. This is the only normal branch-name question.
+
+## 9. Write / update the spec file to the template
+
+Write `docs/specs/NNNN-<feature>.md` (or `docs/specs/<app>/NNNN-<feature>.md` in monorepos) using the `Write` or `Edit` tool, following [spec-template.md](./spec-template.md). The template file is copy-pasteable markdown only: it starts directly with the final artifact shape, has no outer explanatory heading/prose, has no instructional comments, and has no fenced code-block wrapper. Sections must appear in the template order with no additional sections. Replace header placeholders; use `NO_TICKET` only when the user confirms there is no Jira ticket, and set `Status:` to `active` for the current approved spec (`draft` only for an intentionally unapproved spec, `superseded` only for a replaced one). `NNNN` is the next available number in that directory (find the highest existing four-digit prefix and increment). For an update, keep the existing number and edit only the sections affected by the delta. The **Behavior / Requirements** section contains acceptance criteria with NO HOW; if a requirement implies an implementation (for example, "use a queue"), extract the underlying behavior ("retries must be durable across process restarts") and state that instead. Architecture and implementation details belong to se-plan. The **Domain terms** section contains entries mirrored to `CONTEXT.md` when new canonical terms were resolved. The **Decisions** section contains only hard, surprising, trade-off decisions; broader architecture decisions that meet the ADR gate go to `docs/adr/`. This uncommitted file is the review artifact; do NOT commit it before approval.
+
+## 10. Write deferred glossary / ADR review artifacts
+
+If the interview resolved new domain terms, add the intended `CONTEXT.md` edits now so the user can review them with the spec; create the file (via `Write`) only when the first term worth recording is identified. Offer an ADR only when ALL THREE hold: (a) the decision is hard to reverse, AND (b) it would be surprising without context, AND (c) it resulted from a real trade-off between alternatives. ADRs live at `docs/adr/NNNN-<slug>.md`; write them before approval only when offered and accepted so they are reviewable. Do NOT commit any of these files before approval.
+
+## 11. Spec self-review
+
+Before presenting the spec to the user, scan the written files for: placeholders (TBD / TODO / "to be determined"), internal contradictions, scope creep (any HOW that snuck in), **any code (fenced code blocks, file layout, scaffolding — the spec is WHAT-only)**, and ambiguity (any requirement readable two ways). Fix inline using `Edit`. Move any code/HOW to a note for se-plan and remove it from the spec. A requirement readable two ways must be made explicit — pick one reading and state it.
+
+## 12. Spec-approval gate, then branch + commit + auto-chain to se-plan
+
+Present the finalized spec and ask via `AskUserQuestion`: **"Everything look good? Proceed to planning?"**
+
+- **Change requested** → fix the written files using `Edit`, re-present, ask again via `AskUserQuestion`. Loop until the user explicitly approves (e.g. "looks good" / "yes" / "approve").
+- **On approval** → complete [@./branch-gate.md](./branch-gate.md) **Phase C: create/switch confirmed branch**, then **commit the already-written approved artifacts** via **`/se-commit`**, passing the paths this approval touched (the spec + any ADR / `CONTEXT.md` file). **UNLESS** the user asked not to commit, or `docs/specs/` is gitignored (in either case, skip the commit and say so). The user's approval IS the authorization to create/switch to the already-confirmed branch and commit. Before approval, keep review artifacts uncommitted; after approval, commit only the approved paths. If branch switching conflicts with the approved uncommitted files, stop and ask rather than stashing, discarding, or rewriting them.
+- **Then auto-invoke `/se-plan`** to continue the design session — the user does NOT type `/se-plan`. The discuss→plan transition is automatic; only the later plan→execute transition is a hard fresh-session boundary.
 
 ---
 

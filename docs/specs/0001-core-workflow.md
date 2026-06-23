@@ -160,10 +160,13 @@ status: pending
                      folder/file structure as ASCII tree;
                      signatures/pseudo-code only where they clarify architecture
 ## Data Flow         diagram
-## Tasks             overview-level; dependency notes; each states its own verification
+## Tasks             brief task names only (checkboxes; must match Execution Checklist)
+## <Task N name>      per-task detail: Outcome, Skills, Dependencies, Verification
 ## Verification      how to verify the whole plan works (baseline + acceptance)
 ### Browser/E2E Preflight
 ```
+
+Checklist lines (`## Execution Checklist`, `## Tasks`) carry **task names only** — no Outcome, Skills, Dependencies, Verification, or implementation detail on checkbox lines. Per-task detail lives in separate `## <Task name>` sections (see `plugin/skills/se-plan/plan-template.md`).
 
 No change-files manifest, no copy-paste-ready code, no output mockups. Risks/open questions are resolved with the user before the plan is finalized. The `Final review / PR decision` checklist item is fixed bookkeeping for se-exec step 10, not an executable implementation task and not a task dispatched in step 6.
 
