@@ -5,7 +5,7 @@ description: Use this BEFORE any feature work — creating a feature, building a
 
 # se-discuss — Discuss Phase
 
-se-discuss drives the **Discuss (spec)** phase of the super-exec gate-driven workflow. It conducts a relentless, structured interview to reach shared understanding of the **WHAT**, then produces or updates a committed spec in `docs/specs/`. It is **WHAT-only**: every HOW/architecture/design decision is deferred to se-plan.
+se-discuss drives the **Discuss (spec)** phase of the super-exec gate-driven workflow. It conducts a relentless, structured interview to reach shared understanding of the **WHAT**, then produces or updates one or more committed specs in `docs/specs/` — **one spec per cohesive feature**. When a single session covers several distinct features (a new app described by its feature set, or a broad request that bundles unrelated capabilities), it proposes a split so each feature gets its own spec (see the Feature-split gate). It is **WHAT-only**: every HOW/architecture/design decision is deferred to se-plan.
 
 Use a **strong non-fast model** (`opus` — see the `se-subagent` skill for tier details, "Discuss interview" row) for the interview and judgment. Dispatch **finder subagents** (cheap / investigator tier, `haiku`) for all codebase research using the `Task` tool.
 
@@ -38,13 +38,13 @@ Work through every item in order. Do NOT skip any item, even for simple work.
 - [ ] **3. New-vs-update detection**
 - [ ] **4. Relentless WHAT-only interview**
 - [ ] **5. Term-sharpening**
-- [ ] **6. Derive the feature slug**
+- [ ] **6. Feature-split gate + derive feature slug(s)**
 - [ ] **7. Collision gate (CRITICAL)**
 - [ ] **8. Ticket + branch confirmation**
-- [ ] **9. Write / update the spec file to the template**
+- [ ] **9. Write / update the spec file(s) to the template**
 - [ ] **10. Write deferred glossary / ADR review artifacts**
 - [ ] **11. Spec self-review**
-- [ ] **12. Spec-approval gate, then branch + commit + auto-chain to se-plan**
+- [ ] **12. Spec-approval gate, then branch + commit + chain to se-plan**
 
 ---
 
@@ -68,21 +68,32 @@ Ask one question at a time using `AskUserQuestion`. Wait for the answer before t
 
 When the user uses a vague or overloaded term, propose a precise canonical term immediately ("you said 'account' — do you mean Customer or User per our glossary?"). When a term conflicts with an existing `CONTEXT.md` entry, call it out and resolve it before continuing. Stress-test domain relationships with concrete scenarios ("so when a User has two active Memberships, which one gets the retry?").
 
-## 6. Derive the feature slug
+## 6. Feature-split gate + derive feature slug(s)
 
-Produce a ≤6-word, lowercase-kebab summary of the **work itself** (e.g., `payment-retry-on-soft-decline`). The slug is NEVER the repo basename, the `package.json` `name`, or the app/project name. It is derived from the feature being discussed.
+After the interview, decide whether it covered **one** cohesive feature or **several** distinct ones.
+
+**Cohesion rule (what counts as one feature).** A spec is a blueprint of intention, not a PR. Group capabilities that share a single design intention and are tightly coupled into **one** feature — `login` + `logout` + `session-refresh` are one `auth` spec because they cannot be designed with separate architectures. Split capabilities that are independent into **separate** features — `auth`, `profile`, `activity-feed` are three specs. One spec may later spawn many plans; the spec boundary is cohesion, never PR size.
+
+**Split gate (never split silently).** When the interview revealed multiple cohesive, independent features, propose the breakdown via `AskUserQuestion` before writing anything. Present the proposed specs numbered in foundational/dependency order — e.g. "This looks like several features. Break into `0001 auth`, `0002 profile`, `0003 activity-feed`?" — with options: **A** = yes, split as proposed; **B** = no, keep everything in one spec; **C** = other (free text to re-group or rename). If the user picks **B**, or the interview covered a single feature, proceed as a single spec exactly as before.
+
+**Derive slug(s).** For each resulting feature, produce a ≤6-word, lowercase-kebab summary of the **work itself** (e.g., `payment-retry-on-soft-decline`). A slug is NEVER the repo basename, the `package.json` `name`, or the app/project name — it is derived from the feature. Note any real cross-feature dependency now (recorded in step 9 as a `Depends on` line). In a multi-feature split, matching a proposed feature to an existing spec makes that one an **update** (step 3); only the genuinely-new features get new specs.
 
 ## 7. Collision gate (CRITICAL)
 
-Before writing the spec file, compare the candidate slug against the repo basename AND the `package.json` `name` field. On a match, **HALT** and confirm the real feature with the user via `AskUserQuestion`. Do not silently name a spec after the project.
+Before writing any spec file, compare EACH candidate slug against the repo basename AND the `package.json` `name` field. On a match, **HALT** and confirm the real feature with the user via `AskUserQuestion`. Do not silently name a spec after the project. (In a multi-feature split each feature is named after itself, which naturally avoids the app-name collision — but still check every slug.)
 
 ## 8. Ticket + branch confirmation
 
-Complete [@./branch-gate.md](./branch-gate.md) **Phase B: ticket + branch confirmation** after the last WHAT question. If no ticket was provided or inferred, ask once: "Do you have a Jira ticket for this task?" If Atlassian MCP is available and a ticket is known, use it to fetch the ticket title/description and derive the branch name. Present the ticket value (`NO_TICKET` if none) and proposed branch name once; accept edits now. This is the only normal branch-name question.
+Complete [@./branch-gate.md](./branch-gate.md) **Phase B: ticket + branch confirmation** after the last WHAT question. If no ticket was provided or inferred, ask once: "Do you have a Jira ticket for this task?" If Atlassian MCP is available and a ticket is known, use it to fetch the ticket title/description and derive the branch name.
 
-## 9. Write / update the spec file to the template
+- **Single spec** → present the ticket value (`NO_TICKET` if none) and proposed branch name once; accept edits now. This is the only normal branch-name question.
+- **Multi-feature split** → resolve the ticket now (so the spec headers can be written in step 9), but **defer the branch-name confirmation to step 12**. The first branch is named after the feature the user chooses to plan first (picked at the approval gate), and that single branch carries all the specs. One ticket seeds every split spec header by default; if the batch genuinely spans multiple tickets, edit the per-feature `Ticket:` values into the individual spec headers before approval.
+
+## 9. Write / update the spec file(s) to the template
 
 Write `docs/specs/NNNN-<feature>.md` (or `docs/specs/<app>/NNNN-<feature>.md` in monorepos) using the `Write` or `Edit` tool, following [spec-template.md](./spec-template.md). The template file is copy-pasteable markdown only: it starts directly with the final artifact shape, has no outer explanatory heading/prose, has no instructional comments, and has no fenced code-block wrapper. Sections must appear in the template order with no additional sections. Replace header placeholders; use `NO_TICKET` only when the user confirms there is no Jira ticket, and set `Status:` to `active` for the current approved spec (`draft` only for an intentionally unapproved spec, `superseded` only for a replaced one). `NNNN` is the next available number in that directory (find the highest existing four-digit prefix and increment). For an update, keep the existing number and edit only the sections affected by the delta. The **Behavior / Requirements** section contains acceptance criteria with NO HOW; if a requirement implies an implementation (for example, "use a queue"), extract the underlying behavior ("retries must be durable across process restarts") and state that instead. Architecture and implementation details belong to se-plan. The **Domain terms** section contains entries mirrored to `CONTEXT.md` when new canonical terms were resolved. The **Decisions** section contains only hard, surprising, trade-off decisions; broader architecture decisions that meet the ADR gate go to `docs/adr/`. This uncommitted file is the review artifact; do NOT commit it before approval.
+
+**Multi-feature split.** Write one spec file per feature, numbering them sequentially from the next available prefix in **dependency order** (0001 = most foundational; a dependency always gets a lower number than the feature that needs it). Every spec uses the same template independently (its own Problem / Goals / Behavior). When a feature genuinely depends on a sibling (e.g. `activity-feed` needs `auth`), record it in the header's optional `Depends on:` line — set it to `none` when there is no dependency. Shared domain terms resolved during the interview are written once to `CONTEXT.md` (step 10), not duplicated per spec. All spec files are uncommitted review artifacts until the batch approval in step 12.
 
 ## 10. Write deferred glossary / ADR review artifacts
 
@@ -90,15 +101,27 @@ If the interview resolved new domain terms, add the intended `CONTEXT.md` edits 
 
 ## 11. Spec self-review
 
-Before presenting the spec to the user, scan the written files for: placeholders (TBD / TODO / "to be determined"), internal contradictions, scope creep (any HOW that snuck in), **any code (fenced code blocks, file layout, scaffolding — the spec is WHAT-only)**, and ambiguity (any requirement readable two ways). Fix inline using `Edit`. Move any code/HOW to a note for se-plan and remove it from the spec. A requirement readable two ways must be made explicit — pick one reading and state it.
+Before presenting to the user, scan EVERY written spec for: placeholders (TBD / TODO / "to be determined"), internal contradictions, scope creep (any HOW that snuck in), **any code (fenced code blocks, file layout, scaffolding — the spec is WHAT-only)**, and ambiguity (any requirement readable two ways). Fix inline using `Edit`. Move any code/HOW to a note for se-plan and remove it from the spec. A requirement readable two ways must be made explicit — pick one reading and state it.
 
-## 12. Spec-approval gate, then branch + commit + auto-chain to se-plan
+For a multi-feature split, additionally check: each spec is cohesive (no unrelated capabilities crammed together, no tightly-coupled capability split across two specs), the numbering reflects dependency order, and every `Depends on` reference points to a real sibling spec.
+
+## 12. Spec-approval gate, then branch + commit + chain to se-plan
+
+### Single spec
 
 Present the finalized spec and ask via `AskUserQuestion`: **"Everything look good? Proceed to planning?"**
 
 - **Change requested** → fix the written files using `Edit`, re-present, ask again via `AskUserQuestion`. Loop until the user explicitly approves (e.g. "looks good" / "yes" / "approve").
 - **On approval** → complete [@./branch-gate.md](./branch-gate.md) **Phase C: create/switch confirmed branch**, then **commit the already-written approved artifacts** via **`/se-commit`**, passing the paths this approval touched (the spec + any ADR / `CONTEXT.md` file). **UNLESS** the user asked not to commit, or `docs/specs/` is gitignored (in either case, skip the commit and say so). The user's approval IS the authorization to create/switch to the already-confirmed branch and commit. Before approval, keep review artifacts uncommitted; after approval, commit only the approved paths. If branch switching conflicts with the approved uncommitted files, stop and ask rather than stashing, discarding, or rewriting them.
 - **Then auto-invoke `/se-plan`** to continue the design session — the user does NOT type `/se-plan`. The discuss→plan transition is automatic; only the later plan→execute transition is a hard fresh-session boundary.
+
+### Multi-feature split
+
+1. **Batch approval.** Present ALL spec files together and ask ONE approval via `AskUserQuestion`: **"Everything look good across all specs? Proceed to planning?"** A change request loops back to editing any spec with `Edit` and re-presenting the set; repeat until the user approves the whole batch.
+2. **Which to plan first.** On approval, ask via `AskUserQuestion` which spec to plan first (default the lowest-numbered, `0001`).
+3. **Branch.** Confirm the first branch name for that chosen feature ([@./branch-gate.md](./branch-gate.md) **Phase B** naming, deferred from step 8), then run **Phase C: create/switch** it. This single branch carries all the specs.
+4. **Single commit.** Commit ALL spec files plus any shared `CONTEXT.md` / ADR in ONE commit via **`/se-commit`** (e.g. `docs: add initial specs for <app>`), passing every spec path. **UNLESS** the user asked not to commit, or `docs/specs/` is gitignored (skip and say so). The first PR will therefore carry the first feature's implementation plus all specs.
+5. **Chain the first feature only.** Auto-invoke `/se-plan <first-chosen spec slug or path>` — **pass the chosen spec explicitly** so se-plan plans the right one, not an arbitrary spec from the batch. Do NOT chain the others. Tell the user the remaining specs (list them by number/slug) are planned one at a time later: in a fresh session `/se-plan` auto-discovers the next unplanned spec by number (see se-plan). Only the first feature is planned in this session.
 
 ---
 
@@ -112,6 +135,10 @@ When you catch yourself about to do any of the following, STOP and apply the cor
 | "I'll ask the user what I could look up" | Ask the user about directory structure, existing patterns, domain terms, existing specs | Dispatch a finder subagent via `Task`. Research the codebase. Ask only what is not discoverable. |
 | "I'll add an architecture section" | Add tech choices, file layout, data model, or system design to the spec | WHAT-only. Move all HOW to a note for se-plan. Remove it from the spec. |
 | "I'll name the spec after the repo" | Set the slug to the repo name, `package.json` `name`, or app name | Derive the slug from the feature being built. Collision gate halts on a match. |
+| "This app has many features, I'll write one big spec" | Cram several independent features into a single spec because they came from one conversation | If the interview covered multiple cohesive, independent features, fire the Feature-split gate and propose one spec per feature. Cohesion (shared design intention), not conversation count, sets the boundary. |
+| "It's clearly multiple features, I'll just split it" | Silently write N spec files without asking | Never split silently. Propose the numbered breakdown via `AskUserQuestion` (A = split / B = one spec / C = edit). The user can always choose one spec. |
+| "I'll auto-chain se-plan for every spec I wrote" | Chain into planning for all N specs at once | Chain only the first-chosen feature. The rest are picked up later by `/se-plan` auto-discovery (next unplanned spec by number), one at a time. |
+| "I'll put each split spec on its own branch / on base" | Commit the split specs across N branches, or on the base branch | All specs commit together in ONE commit on the first-chosen feature's branch. That branch carries every spec; the first PR includes them all. Features 2..N get their own branch later, created by se-plan. |
 | "I'll commit the spec before they've approved it" | Commit the spec while changes are still under review or before the user says "looks good" | Commit only AFTER explicit approval. Run the review/fix loop (via `AskUserQuestion`) first; on approval, commit via `/se-commit` — unless the user declined or `docs/specs/` is gitignored. Never commit before approval or mid-change. |
 | "I'll stop and make them type `/se-plan`" | Hand off at the gate and wait for a manual `/se-plan` invocation | After the spec is approved (and committed), **auto-invoke `/se-plan`** in the same session. The user never types `/se-plan`. Only the plan→execute boundary stays a manual fresh-session step. |
 | "I'll ask multiple questions at once" | Present a list of questions | One question at a time via `AskUserQuestion`. Wait for the answer. Provide your recommended answer with each question. |

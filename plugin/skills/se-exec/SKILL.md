@@ -120,7 +120,7 @@ Resolve in this order:
 
 1. **Explicit path from manual invocation** — if the user provided an absolute or relative `plan.md`, or a directory containing `plan.md`, use that plan directory without asking for confirmation; the path itself is the confirmation. If the path cannot be resolved to `plan.md`, stop and ask for the corrected path.
 2. **Active marker** — if no explicit path was provided, read `.super-exec/active`. If it contains `active_plan: <path>`, resolve that path to `plan.md` and ask the user to confirm this plan before proceeding. If `active_plan` exists but cannot be resolved, tell the user the marker points at a missing plan and stop; do not silently choose a different plan.
-3. **Latest plan fallback** — if there is no explicit path and no `active_plan`, match the plan directory by the current branch name or ticket number → then by feature name → then by the most-recent plan dir under `.super-exec/<feature>/`. Ask the user to confirm this inferred match before proceeding.
+3. **Latest plan fallback** — if there is no explicit path and no `active_plan`, match the plan directory by the current branch name or ticket number → then by feature name → then by the most-recent plan dir under `.super-exec/NNNN-<feature>/`. Ask the user to confirm this inferred match before proceeding.
 
 If no plan is found, tell the user no executable plan was found and stop. Once a plan is selected by any path above, update `.super-exec/active` with `phase: exec`, `active_plan: <repo-relative path to plan.md>`, `started: <current UTC ISO-8601>`, and the existing `branch` value if one was present and still matches the selected plan. Do not assume silently.
 

@@ -1,7 +1,9 @@
 # Branch gate (reference)
 
-Loaded by `se-discuss` in three phases. This is a reference, not a standalone skill — `se-discuss`
-reads it on demand and follows the phase named by its checklist. It ensures:
+Loaded by `se-discuss` in three phases, and reused by `se-plan` (Phase B + Phase C) when se-plan
+owns branch creation for a spec that has no feature branch yet (features 2..N of a multi-feature
+split, or a manual re-entry from a base branch). This is a reference, not a standalone skill — the
+owning skill reads it on demand and follows the phase named by its checklist. It ensures:
 
 1. The interview does not block on git or Atlassian MCP.
 2. The user confirms ticket + branch name once, after the WHAT is clear.
@@ -27,8 +29,10 @@ If background shell work is unavailable, skip the wait and run [@./branch-contex
 
 Run this after the feature slug is stable and before writing the spec file.
 
+> **Halves may run separately.** This phase has two halves — ticket resolution and branch-name confirmation. In a multi-feature split (se-discuss) or an se-plan re-entry, resolve the ticket when the WHAT/spec is clear but confirm the branch name later (once the first feature to plan is chosen). Do not force the branch-name question early in those flows.
+
 - **Read branch context.** If the background result is ready, read it. If not, wait briefly; if still unavailable, run [@./branch-context](./branch-context) synchronously now. Use the final feature slug as the source of truth for branch naming.
-- **Resolve ticket once.** If a ticket was provided by the user, inferred from the current branch, or discovered from the prompt, use it. If no ticket is known, ask exactly once: "Do you have a Jira ticket for this task?" If the answer is no, record `NO_TICKET`.
+- **Resolve ticket once.** If a ticket was provided by the user, inferred from the current branch, discovered from the prompt, or read from the selected spec's `Ticket:` header (when se-plan reuses this gate for an existing spec), use it. If no ticket is known, ask exactly once: "Do you have a Jira ticket for this task?" If the answer is no, record `NO_TICKET`.
 - **Use Atlassian MCP when possible.** If a ticket is known and Atlassian MCP is available, query it for the title/description and use that data to derive the branch summary. If MCP is unavailable, ask the user to either enable it or confirm the branch summary manually. Never fabricate ticket data.
 - **Resolve branch-name convention by precedence.** Follow the three-step precedence rule (see "Convention precedence" below). Surface the resolved convention before proposing the name.
 - **Construct and confirm the branch name.** Present the proposed ticket value and branch name to the user. Accept or adjust before proceeding. This confirmation is durable for the approval/commit step; do not ask again later unless facts changed, branch creation fails, or checkout conflicts.

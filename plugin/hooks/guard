@@ -207,7 +207,7 @@ fi
 # pre-tool (file-write) event, so on Cursor this degrades to skill-prose
 # discipline (no nudge emitted).
 if [ "$HARNESS" = "cc" ] && [ "$isSpecWrite" = true ]; then
-  n3_nudge="[super-exec N3] You are writing fenced code into a spec under docs/specs/. A spec is WHAT-only — high-level goals, requirements, and intentions, never code. Move implementation/code to the plan (.super-exec/<feature>/<plan-dir>/plan.md) and keep the spec to behavior and decisions. Update the spec only when a documented decision changes."
+  n3_nudge="[super-exec N3] You are writing fenced code into a spec under docs/specs/. A spec is WHAT-only — high-level goals, requirements, and intentions, never code. Move implementation/code to the plan (.super-exec/NNNN-<feature>/<plan-dir>/plan.md) and keep the spec to behavior and decisions. Update the spec only when a documented decision changes."
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","additionalContext":"%s"}}\n' \
     "$n3_nudge"
   exit 0

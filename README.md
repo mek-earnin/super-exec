@@ -47,7 +47,7 @@ If `superpowers` is also installed, super-exec is intended to drive the feature 
 
 ### 1. Discuss
 
-Run `/se-discuss` when starting a new feature or behavior change. The agent interviews you until the problem, goals, non-goals, requirements, domain terms, and key decisions are clear. The output is a spec you review before the workflow moves on.
+Run `/se-discuss` when starting a new feature or behavior change. The agent interviews you until the problem, goals, non-goals, requirements, domain terms, and key decisions are clear. The output is one or more specs (one per cohesive feature) you review before the workflow moves on — when a single conversation covers several distinct features, super-exec proposes splitting it into a spec per feature and plans them one at a time.
 
 ### 2. Plan
 

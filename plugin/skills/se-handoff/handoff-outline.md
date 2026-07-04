@@ -3,7 +3,7 @@
 ## Session State
 - Branch: <branch-name>
 - Base: <base-branch>
-- Plan: .super-exec/<feature>/<plan-dir>/plan.md
+- Plan: .super-exec/NNNN-<feature>/<plan-dir>/plan.md
 - Review-before-commit: on | off
 - Auto-PR: on | off
 - Impeccable opt-in: opted-in | opted-out | not asked

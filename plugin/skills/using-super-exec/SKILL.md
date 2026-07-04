@@ -16,8 +16,8 @@ invoke as `/se-discuss`, `/se-plan`, `/se-exec`, or `/se-pr-triage` (or that the
 when the work matches); on entry each writes the `.super-exec/active` session marker that makes the
 guards live. Behavior is identical whether invoked manually or automatically.
 
-- `/se-discuss` — **Design session.** Start from a raw idea or task description, interview to a reviewed spec, then auto-chain into `/se-plan` after spec approval.
-- `/se-plan` — **Plan / re-plan / re-entry.** Turn a spec into an architecture + verification plan, or revise an existing plan. The **plan → execute boundary stays a hard fresh-session step** — never auto-chained.
+- `/se-discuss` — **Design session.** Start from a raw idea or task description, interview to one or more reviewed specs (one per cohesive feature — a multi-feature session is split into separate specs with your confirmation), then auto-chain into `/se-plan` for the first spec after approval.
+- `/se-plan` — **Plan / re-plan / re-entry.** Turn a spec into an architecture + verification plan, revise an existing plan, or (no argument) pick up the next unplanned spec from a split. The **plan → execute boundary stays a hard fresh-session step** — never auto-chained.
 - `/se-exec` — **Build session.** Execute the selected plan task by task with verification and review checkpoints. It owns plan resume, completion checks, task/todo sync, commit cadence, and the final PR/no-PR decision.
 - `/se-pr-triage` — **Post-PR triage session.** Manual entrypoint; not auto-chained from `se-pr`. Runs one loop-safe triage round: Track A handles review comments under a mandatory human approval gate; Track B investigates and resolves CI failures autonomously with no PR replies. Wrap in `/loop` for continuous watching.
 

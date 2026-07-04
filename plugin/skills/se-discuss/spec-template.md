@@ -1,5 +1,5 @@
 # <Feature>
-> Ticket: <TICKET-ID | NO_TICKET>  ·  Status: <draft | active | superseded>
+> Ticket: <TICKET-ID | NO_TICKET>  ·  Status: <draft | active | superseded>  ·  Depends on: <feature-slug | none>
 
 ## Problem / Why
 <Problem statement.>

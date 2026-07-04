@@ -1,6 +1,6 @@
 # Plans are local-only; specs are the shared contract
 
-The spec for a feature is committed to `docs/specs/NNNN-<feature>.md` and is the durable, team-shared contract. `NNNN` is the next available four-digit number in that specs directory, matching the ADR convention. Plans live gitignored under `.super-exec/<feature>/<YYYY-MM-DD>-<plan-name>/` and are per-effort scaffolding — one feature has many plans over time (≈ one plan per implementation effort per PR).
+The spec for a feature is committed to `docs/specs/NNNN-<feature>.md` and is the durable, team-shared contract. `NNNN` is the next available four-digit number in that specs directory, matching the ADR convention. Plans live gitignored under `.super-exec/NNNN-<feature>/<YYYY-MM-DD>-<plan-name>/` — the plan directory reuses the spec's full name (the `NNNN` number prefix included) so a local plan folder maps to its governing spec at a glance — and are per-effort scaffolding — one feature has many plans over time (≈ one plan per implementation effort per PR).
 
 We keep plans local because they are ephemeral implementation detail whose commit would add repo and PR churn, and because teammates only ever need the spec. It follows that **the spec must never reference a plan** — such a reference would dangle for everyone except the author, who is the only one with the plan on disk.
 

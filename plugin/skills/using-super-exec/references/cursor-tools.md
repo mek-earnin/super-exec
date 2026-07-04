@@ -104,6 +104,8 @@ super-exec names model **tiers** by family alias so they never go stale (see the
 
 **Skill-bundled files:** Reference scripts and reference files beside a skill with the `@./<file>` file-mention form (e.g. `@./branch-context`, [@./worktree.md](./worktree.md) — link text `@./<file>`, link target `./<file>`). Both harnesses resolve that path from the loaded SKILL.md's own location — Claude Code exposes `${CLAUDE_SKILL_DIR}` for that directory internally; Cursor derives it from the loaded skill path. No path env var is exported to the agent shell, so never rely on `${CLAUDE_SKILL_DIR}` or `${CURSOR_PLUGIN_ROOT}` inside an agent bash command.
 
+**Cross-skill references:** a skill may reference a sibling skill's bundled file with the relative `@../<other-skill>/<file>` form (e.g. se-plan references [@../se-discuss/branch-gate.md](../se-discuss/branch-gate.md)). It resolves the same way — relative to the referencing SKILL.md's own directory — so the agent reads the target with the `Read` tool on demand.
+
 ---
 
 ## Guard degradation on Cursor

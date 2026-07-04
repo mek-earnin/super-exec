@@ -240,7 +240,7 @@ if [ -f "${SUPER_EXEC_DIR}/active" ]; then
   }
 
   # Prefer the concrete plan recorded in the active marker:
-  #   active_plan: .super-exec/<feature>/<plan-dir>/plan.md
+  #   active_plan: .super-exec/NNNN-<feature>/<plan-dir>/plan.md
   # The marker remains the active-session signal for guards; active_plan adds the
   # concrete plan target for resume/execute sessions.
   active_plan=""
@@ -274,10 +274,10 @@ if [ -f "${SUPER_EXEC_DIR}/active" ]; then
   fi
 
   # Fallback when the marker does not yet name a plan: look for any in-progress
-  # plan directory: .super-exec/<feature>/<plan-dir>/plan.md
+  # plan directory: .super-exec/NNNN-<feature>/<plan-dir>/plan.md
   if [ -d "${SUPER_EXEC_DIR}" ]; then
     # Find the most recently modified plan.md that is NOT at the root level
-    # (plans live at depth 3: .super-exec/<feature>/<plan-dir>/plan.md).
+    # (plans live at depth 3: .super-exec/NNNN-<feature>/<plan-dir>/plan.md).
     if [ -z "$plan_context" ] && [ -z "$invalid_plan_context" ]; then
       while IFS= read -r plan_file; do
         set_plan_context_from_file "$plan_file" "latest plan discovery"

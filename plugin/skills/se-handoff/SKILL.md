@@ -30,7 +30,7 @@ Work through every step in order. Do not skip or reorder.
    Also make sure the plan's first `## Execution Checklist` section matches the completed-task state before writing the handoff; the handoff carries evidence, while the checklist carries quick status.
 
 3. **Write the handoff file.**
-   Path: `.super-exec/<feature>/<plan-dir>/handoff.md` — the same directory that contains the `plan.md` being executed. Never write to `.super-exec/` root or anywhere else. Use the `Write` tool. See [handoff-outline.md](./handoff-outline.md) for the required sections. The outline file is copy-pasteable markdown only: it starts directly with `# Handoff — <plan-dir name>`, has no outer explanatory heading/prose, and has no fenced code-block wrapper. Fill the sections in order. Under one `## Completed Tasks` section, repeat `### <task>` entries once per done task, include the full next-task description from `plan.md`, and write `None.` for empty in-flight decisions or follow-ups.
+   Path: `.super-exec/NNNN-<feature>/<plan-dir>/handoff.md` — the same directory that contains the `plan.md` being executed. Never write to `.super-exec/` root or anywhere else. Use the `Write` tool. See [handoff-outline.md](./handoff-outline.md) for the required sections. The outline file is copy-pasteable markdown only: it starts directly with `# Handoff — <plan-dir name>`, has no outer explanatory heading/prose, and has no fenced code-block wrapper. Fill the sections in order. Under one `## Completed Tasks` section, repeat `### <task>` entries once per done task, include the full next-task description from `plan.md`, and write `None.` for empty in-flight decisions or follow-ups.
 
 4. **Pause and instruct the user.**
    After writing, output exactly these two instructions:
@@ -48,7 +48,7 @@ Work through every step in order. Do not skip or reorder.
 | If you observe this… | The correct action |
 |---|---|
 | "I'll just keep going past the context limit" | Write the handoff and pause. Coherence lost mid-task is worse than a clean resume. |
-| "I'll write the handoff to `.super-exec/` root" | Wrong path. It must go into the active plan dir: `.super-exec/<feature>/<plan-dir>/handoff.md`. |
+| "I'll write the handoff to `.super-exec/` root" | Wrong path. It must go into the active plan dir: `.super-exec/NNNN-<feature>/<plan-dir>/handoff.md`. |
 | "I'll clear `active` so the next session starts clean" | Never. `active` must stay set. se-handoff never clears it. The resume flow depends on `active` pointing to the in-progress plan. |
 | "The next agent can figure out what's done from git log" | No. Record completed tasks and their verification evidence explicitly in the handoff. The next session must not re-run or re-litigate finished work. |
 | "I'll wait for a fixed token count before triggering" | There is no fixed number. The threshold is model-judged. Trigger when you judge that continuing risks losing coherence or truncating evidence — not at a predetermined count. |
