@@ -23,7 +23,7 @@ Work through every step in order. Do not skip or reorder.
    - Every task that is DONE, paired with its verification evidence summary (exit codes, test counts, key log excerpts — enough for the next session to trust it without re-running).
    - The **exact next unstarted task** (by name and position in the plan).
    - The two session toggles: **review-before-commit** (on/off) and **Auto-PR** (on/off).
-   - The **impeccable opt-in** answer recorded at session start (opted-in / opted-out / not asked).
+   - Whether this is a **UI plan**. On a UI plan impeccable is used automatically wherever it is installed — there is no opt-in answer to carry.
    - The **branch name** and **base branch**.
    - Any in-flight context or decisions made during the session that are not captured in committed code or the plan (e.g., a design choice that was resolved mid-task, a dependency discovered, a scope clarification from the user).
    - Any open follow-ups or deferred items that must not be forgotten.

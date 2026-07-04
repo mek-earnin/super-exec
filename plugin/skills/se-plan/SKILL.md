@@ -34,7 +34,7 @@ Work through every item in order. Do NOT skip any item, even for simple work.
 - [ ] **2. Research the architecture via subagents**
 - [ ] **3. Map file structure first**
 - [ ] **4. Enumerate the full repo skill catalog**
-- [ ] **5. UI classification → impeccable opt-in**
+- [ ] **5. UI classification → impeccable auto-use (never ask)**
 - [ ] **6. Resolve every risk and open question with the user**
 - [ ] **7. Design verification**
 - [ ] **8. Prepare the plan using the exact template**
@@ -79,13 +79,14 @@ Before defining tasks, decide which files/units will be created or modified and 
 
 Dispatch a finder subagent (via the `Task` tool) to read every `.claude/skills/*/SKILL.md` (collect: name, description, argument-hint). **Semantically bind matching skills to tasks.** Record each binding explicitly in the plan — e.g., a task "query a new endpoint" → "**MUST invoke `create-api-service` before creating files**". Repo skills are a first-class reuse target for any task they cover; never hand-roll what a skill provides.
 
-## 5. UI classification → impeccable opt-in
+## 5. UI classification → impeccable auto-use (never ask)
 
-Classify whether the feature involves UI work (a frontend app, or the change touches components/styles).
+Classify whether the feature involves UI work (a frontend app, or the change touches components/styles). **Never ask the user whether to use impeccable — use it automatically when it is installed, skip it when it is not.**
 
-- **No UI work** → never ask about impeccable. Skip to the next step.
-- **UI work present** → ask the user ONCE: "This involves UI changes. Should I incorporate impeccable for design direction and state coverage? (default: yes)". **Default is YES**. Persist the answer in the plan.
-- **When opted in:** detect whether impeccable is installed (glob `.claude/skills/impeccable*/SKILL.md` or equivalent). **If absent:** skip the UI design pass, report that it was skipped and why, suggest installing impeccable, and continue — never block. **If present:** dispatch impeccable `shape` via a subagent (using the `Task` tool) to establish design direction and identify states the design system does not cover (empty / loading / error / edge). Capture output as design INTENT + planned tasks — NO code (the no-code task rule applies here too).
+- **No UI work** → impeccable is never used. Skip to the next step.
+- **UI work present** → note the UI classification in the plan, then detect whether impeccable is installed (glob `.claude/skills/impeccable*/SKILL.md` or equivalent).
+  - **If absent:** skip the UI design pass, report that it was skipped and why, suggest installing impeccable, and continue — never block, never ask.
+  - **If present:** dispatch impeccable `shape` via a subagent (using the `Task` tool) to establish design direction and identify states the design system does not cover (empty / loading / error / edge). Capture output as design INTENT + planned tasks — NO code (the no-code task rule applies here too).
 
 ## 6. Resolve every risk and open question with the user
 
@@ -140,7 +141,8 @@ When you catch yourself about to do any of the following, STOP and apply the cor
 | "I'll cram task detail into the checklist" | Put Outcome, Skills, Verification, or commands on `## Execution Checklist` or `## Tasks` lines | Checklist lines are brief task names only. Details belong in separate `## <Task name>` sections. See [plan-template.md](./plan-template.md). |
 | "I'll hand-roll the API call / git op / scaffold" | Implement something directly without checking the skill catalog | Enumerate the full catalog first. If a skill covers it, bind it to the task explicitly. Never hand-roll what a skill provides. |
 | "No tests here, so I'll scaffold some unit tests" | Add a `__tests__/` dir and stub files when no test suite exists in the touched area | Do NOT scaffold. Use browser-real verification, endpoint calls, or a custom script instead. Scaffolding untested tests is noise. |
-| "I'll ask impeccable even though there's no UI" | Invoke or ask about impeccable when the feature has no frontend / component / style changes | Never mention impeccable when there is no UI work. |
+| "I'll ask impeccable even though there's no UI" | Invoke impeccable when the feature has no frontend / component / style changes | Never use impeccable when there is no UI work. |
+| "I'll ask the user whether to use impeccable on this UI work" | Prompt the user to opt in/out of impeccable for a UI feature | Never ask. On UI work, use impeccable automatically when installed; skip silently (with a note) when absent. There is no opt-in question. |
 | "I'll run playwright without starting the app" | Record a browser/e2e command but omit the local dev-server setup | Bind the repo's local dev-server skill if present; otherwise record the repo's fallback dev-server command. Record start, readiness, command, and teardown/reuse evidence before any browser/e2e command. |
 | "impeccable isn't installed, I can't proceed" | Block or pause the workflow because impeccable is absent | Skip the UI design pass, report that it was skipped and why, suggest installing impeccable, and continue. Never block on an optional external. |
 | "I'll leave this risk open for execution to resolve" | Write "TBD", "decide during implementation", or leave an unanswered question in the plan | Resolve everything now. Use `AskUserQuestion` to grill the user. Explore the codebase via `Task` subagent. The plan carries zero open items. |

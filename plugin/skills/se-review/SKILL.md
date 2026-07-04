@@ -21,7 +21,7 @@ Complete every item in order. Do not skip or reorder steps. Do not advance past 
 - [ ] **2. Arch-gate verdict — DEVIATES handling**
 - [ ] **3. Deep-review pass**
 - [ ] **4. Apply the severity filter**
-- [ ] **5. impeccable UI-critique lens (when enabled)**
+- [ ] **5. impeccable UI-critique lens (UI work + installed)**
 - [ ] **6. Critical/Important findings — re-enter inner loop**
 - [ ] **7. Fresh re-review after every fix cycle**
 - [ ] **8. Report clean**
@@ -66,9 +66,9 @@ The reviewer must tag every finding with exactly one severity: **Critical**, **I
 
 If there are no Critical or Important findings, skip to step 7.
 
-## 5. impeccable UI-critique lens (when enabled)
+## 5. impeccable UI-critique lens (UI work + installed)
 
-Evaluate this step if and only if the plan recorded an impeccable opt-in AND the feature involves UI work:
+Evaluate this step if and only if the feature involves UI work (derive from the plan/spec and the diff). **Never ask the user whether to run it — run it automatically when impeccable is installed, skip it when it is not.**
 
 - Detect whether impeccable is installed: glob `.claude/skills/impeccable*/SKILL.md`.
 - **If absent:** skip this lens. Note in the report: "impeccable not installed — UI lens skipped." Never block on an absent optional external.
@@ -87,7 +87,7 @@ For each Critical or Important finding (including any from the impeccable lens):
 
 ## 7. Fresh re-review after every fix cycle
 
-After any fix cycle (step 2 or step 6), the re-review is always performed by a NEW subagent dispatched with the `Task` tool that has not seen the prior review conversation. Provide the fresh reviewer with the full current diff and the spec. The reviewer runs the same deep-review sequence (steps 3a → 3b → 3c) plus the impeccable lens if enabled. Loop until a fresh reviewer finds zero Critical or Important findings.
+After any fix cycle (step 2 or step 6), the re-review is always performed by a NEW subagent dispatched with the `Task` tool that has not seen the prior review conversation. Provide the fresh reviewer with the full current diff and the spec. The reviewer runs the same deep-review sequence (steps 3a → 3b → 3c) plus the impeccable lens when the work is UI and impeccable is installed. Loop until a fresh reviewer finds zero Critical or Important findings.
 
 ## 8. Report clean
 
@@ -120,7 +120,7 @@ When you catch yourself about to do any of the following, STOP and apply the cor
 | "impeccable isn't installed — I can't proceed with the UI review." | Skip the impeccable lens, note it in the report, and continue. impeccable is the only optional external; its absence never blocks the workflow. |
 | "I'll give the fixer the full review context so it has everything it needs." | Give the fixer only the specific finding, the relevant acceptance criteria, and the plan's architectural context. The full review is noise; targeted context produces targeted fixes. |
 | "Deep review can run before the arch-gate is clean." | Arch-gate FIRST, always. Deep review does not begin until a fresh reviewer has rendered CONFORMS on the architecture. Skipping the gate means reviewing code that may be structurally wrong. |
-| "I'll run the impeccable lens even though the plan didn't opt in." | The impeccable lens runs if and only if the plan recorded an opt-in AND the feature involves UI work. No opt-in → no lens, regardless of whether impeccable is installed. |
+| "I'll run the impeccable lens on non-UI work / I'll ask the user first." | The impeccable lens runs if and only if the feature involves UI work AND impeccable is installed — automatically, no opt-in question. No UI work → no lens. UI work + not installed → skip with a note. Never ask the user. |
 | "This spec violation should be fixed by updating the spec." | The spec is authoritative. A spec violation is a code bug by default. Fix the code. Only se-exec's limitation-escalation tree changes the spec, and only when the spec is genuinely unachievable. |
 
 ---

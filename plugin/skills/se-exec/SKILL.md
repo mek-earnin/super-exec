@@ -43,7 +43,7 @@ SESSION START
   └─ locate + confirm plan (+ handoff resume if handoff.md present)
   └─ read plan frontmatter + checklist + spec
   └─ present 2 toggles ONCE
-  └─ (re-ask impeccable ONCE if UI plan + record missing)
+  └─ (UI plan → impeccable used automatically if installed; never ask)
 
   FOR EACH TASK (sequential unless file-disjoint):
 
@@ -55,7 +55,7 @@ SESSION START
     │  │                                            │  │
     │  │  implementer subagent                      │  │
     │  │    └─ invoke bound repo skill first        │  │
-    │  │    └─ impeccable craft (if UI + enabled)   │  │
+    │  │    └─ impeccable craft (if UI + installed)  │  │
     │  │  → se-verify (runner → judge)              │  │
     │  │    └─ FAIL (bug) → fixer → re-verify → loop│  │
     │  │    └─ FAIL (limitation) → escalate (6e)    │  │
@@ -105,7 +105,7 @@ Complete every item in order. Do not skip or reorder steps.
 - [ ] **2. Check frontmatter, status, checklist, and handoff**
 - [ ] **3. Read the plan/spec and seed task state**
 - [ ] **4. Present the two session toggles**
-- [ ] **5. Re-ask impeccable opt-in if missing (UI plans)**
+- [ ] **5. UI plan → impeccable auto-use (never ask)**
 - [ ] **6. Per task — inner loop**
 - [ ] **7. Commit step**
 - [ ] **8. Outer loop — invoke `/se-review`**
@@ -147,9 +147,9 @@ Use the `AskUserQuestion` tool to ask both toggles in a single prompt. Do not as
 
 Record both answers. They are immutable for the session.
 
-## 5. Re-ask impeccable opt-in if missing (UI plans)
+## 5. UI plan → impeccable auto-use (never ask)
 
-If the plan is a UI plan and the impeccable opt-in was never recorded, re-ask ONCE (default yes) using `AskUserQuestion`. Persist the answer. This question is only asked when the record is genuinely absent — never re-ask if the answer is already recorded (including a "no" from a prior session or from the handoff).
+Determine whether this is a UI plan (derive from the plan/spec content — a frontend app or component/style changes). **Never ask the user whether to use impeccable.** On a UI plan, impeccable is used automatically wherever it is installed: `craft` at execute (step 6a) and the `critique` lens at review (se-review). Availability is detected at each phase (glob `.claude/skills/impeccable*/SKILL.md` or equivalent); if absent, those passes are skipped gracefully with a note, never blocked. No `AskUserQuestion` prompt about impeccable at any point in the session.
 
 ## 6. Per task — inner loop
 
@@ -160,7 +160,7 @@ For each executable task in plan order (respecting the parallelism rule below). 
 **6a. Dispatch implementer.** Dispatch an implementer subagent using the `Task` tool (implementer / mid tier — see the `se-subagent` skill). The implementer MUST:
 1. Check the plan's recorded binding and **invoke the task's bound repo skill BEFORE hand-rolling any logic**.
 2. Re-check the repo skill catalog for any unplanned work the task requires — use a skill if one covers it.
-3. When impeccable is enabled and the task is UI, build via impeccable `craft`.
+3. On a UI plan, build UI tasks via impeccable `craft` whenever impeccable is installed (detect per phase); skip gracefully with a note when absent. Never ask the user.
 
 The implementer reports back a summary **including the explicit list of files it created or modified** — the controller passes that list to the commit step so the commit stages only those paths. Raw file diffs do not enter the controller's context.
 
@@ -256,4 +256,4 @@ Dispatch all subagents with the `Task` tool. Resolve tier aliases from the `se-s
 | "Better ask the human before committing this task — committing unprompted feels too proactive." | Pause to request per-commit approval when review-before-commit is OFF (often because a host agent policy says "only commit when the user asks"). | The OFF toggle IS the user's explicit standing authorization (step 4): each per-task commit is user-requested, not proactive. Commit on inner-loop-green without re-asking. Per-commit approval applies ONLY when review-before-commit is ON (write `gate-open`, wait). |
 | "I'll just keep going — I can probably finish before context runs out." | Continue past the model-judged context limit without invoking se-handoff. | When the controller judges it is approaching a context limit, invoke `/se-handoff` immediately, pause, and tell the user to `/clear` and re-run `/se-exec`. |
 | "I'll use a worktree to be safe — it can't hurt." | Create a git worktree without the user having passed `--worktree`. | No worktrees unless `--worktree` was explicitly passed at invocation. Load [@./worktree.md](./worktree.md) on demand only when that flag is present. |
-| "The impeccable question keeps coming up — I'll re-ask each session." | Re-ask the impeccable opt-in even though an answer is already recorded in the plan or handoff. | Re-ask ONCE using `AskUserQuestion`, only if the record is genuinely absent. A prior "no" is a record. A handoff carrying the answer is a record. Do not re-ask. |
+| "This is a UI plan — I'll ask whether to use impeccable." | Prompt the user (with `AskUserQuestion` or otherwise) to opt in/out of impeccable. | Never ask. On a UI plan, impeccable is used automatically wherever it is installed (`craft` at execute, `critique` at review) and skipped with a note when absent. There is no opt-in question in any session. |

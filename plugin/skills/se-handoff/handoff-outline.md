@@ -6,7 +6,7 @@
 - Plan: .super-exec/NNNN-<feature>/<plan-dir>/plan.md
 - Review-before-commit: on | off
 - Auto-PR: on | off
-- Impeccable opt-in: opted-in | opted-out | not asked
+- UI plan: yes | no
 
 ## Completed Tasks
 ### <Completed task name>
