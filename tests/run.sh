@@ -1345,6 +1345,88 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Check 16 — se-pr-triage two-gate reply contract
+# ---------------------------------------------------------------------------
+echo ""
+echo "Check 16: se-pr-triage two-gate reply contract"
+
+triage_contract_output="$(mktemp)"
+if REPO_ROOT="$REPO_ROOT" node >"$triage_contract_output" 2>/dev/null <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const root = process.env.REPO_ROOT;
+
+const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
+const skill = read('plugin/skills/se-pr-triage/SKILL.md');
+const spec = read('docs/specs/0002-pr-triage-watch-bot.md');
+const core = read('docs/specs/0001-core-workflow.md');
+const orientation = read('plugin/skills/using-super-exec/SKILL.md');
+const readme = read('README.md');
+const problems = [];
+
+const orderedHeadings = [
+  '## 5. Mandatory decision approval gate (Gate 1)',
+  '## 6. Execute approved Track A fixes',
+  '## 7. Compose exact final replies',
+  '## 8. Mandatory final reply approval gate (Gate 2)',
+  '## 9. Post exact approved replies',
+];
+let previous = -1;
+for (const heading of orderedHeadings) {
+  const index = skill.indexOf(heading);
+  if (index === -1) problems.push(`skill missing ordered heading: ${heading}`);
+  if (index !== -1 && index <= previous) problems.push(`skill heading out of order: ${heading}`);
+  if (index !== -1) previous = index;
+}
+
+const required = [
+  [skill, 'Gate-1 approval authorizes only the approved Fix work. It never authorizes a PR reply.', 'skill Gate-1 authority'],
+  [skill, 'Do not draft, generate, suggest, outline, or present any reply body — provisional, sample, or final — for any decision before step 7.', 'skill no pre-step-7 reply drafting'],
+  [skill, 'The rationale is internal analysis for the human, not a draft addressed to the reviewer.', 'skill Gate-1 rationale is not reply copy'],
+  [skill, 'This is the first step where any reply text may be drafted.', 'skill reply composition starts at step 7'],
+  [skill, 'Placeholders such as `<SHA>` and provisional implementation wording are forbidden.', 'skill no provisional Fix replies'],
+  [skill, 'Any reply target or body change after Gate-2 approval invalidates that approval', 'skill Gate-2 invalidation'],
+  [skill, 'A round with only Decline / Answer / Defer items still performs this step after Gate 1.', 'skill no-Fix batch'],
+  [skill, 'do not create a reply candidate', 'skill aborted Fix exclusion'],
+  [skill, 'There is no auto-approve mode, even under `/loop`.', 'skill Gate-2 loop rule'],
+  [spec, 'Gate-1 approval authorizes only the approved Fix work; it never authorizes a PR reply.', 'spec Gate-1 authority'],
+  [spec, 'During triage and Gate 1, the controller must not draft, generate, suggest, outline, or present any reply body', 'spec no initial reply drafting'],
+  [spec, 'reply composition begins only here, after the step-12 Fix phase has completed', 'spec post-fix reply composition'],
+  [spec, 'Final reply approval gate (mandatory)', 'spec Gate-2'],
+  [spec, 'placeholders and provisional wording are forbidden', 'spec exact post-fix bodies'],
+  [core, 'Gate-1 decision/Fix approval is never reply approval.', 'core two-gate discipline'],
+  [orientation, 'separately gates the exact final replies before posting', 'orientation two-gate summary'],
+  [readme, 'exact final replies are previewed and approved separately after fixes are pushed', 'README user-facing contract'],
+];
+for (const [content, phrase, label] of required) {
+  if (!content.includes(phrase)) problems.push(`missing ${label}: ${phrase}`);
+}
+
+const forbidden = [
+  [spec, /single approval/i, 'spec stale single-approval wording'],
+  [skill, /Process each Track A item using the approved decisions and reply text/i, 'skill stale one-gate execution'],
+  [skill, /Only after the commit is pushed, post the approved reply/i, 'skill stale auto-post after push'],
+];
+for (const [content, pattern, label] of forbidden) {
+  if (pattern.test(content)) problems.push(label);
+}
+
+process.stdout.write(problems.length ? problems.join('\n') : 'ok');
+NODE
+then
+  triage_contract_result="$(<"$triage_contract_output")"
+else
+  triage_contract_result="ERROR"
+fi
+rm -f "$triage_contract_output"
+
+if [ "$triage_contract_result" = "ok" ]; then
+  pass "se-pr-triage enforces ordered decision and exact-final-reply gates"
+else
+  fail "se-pr-triage two-gate contract problem:"
+  echo "$triage_contract_result" | sed 's/^/    /'
+fi
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""

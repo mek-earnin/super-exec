@@ -59,7 +59,7 @@ Run `/se-exec` in a fresh session when ready to build. The agent works task by t
 
 ### 4. PR / Triage
 
-The workflow can open a draft PR when the build is ready. After a PR exists, `/se-pr-triage` helps process review comments and CI failures without mixing post-PR work back into the build session.
+The workflow can open a draft PR when the build is ready. After a PR exists, `/se-pr-triage` helps process review comments and CI failures without mixing post-PR work back into the build session. Review-comment decisions and fixes are approved first; exact final replies are previewed and approved separately after fixes are pushed.
 
 ## Entrypoints
 
@@ -68,7 +68,7 @@ The workflow can open a draft PR when the build is ready. After a PR exists, `/s
 | `/se-discuss` | Start from an idea, ticket, or desired change and produce a reviewed spec. |
 | `/se-plan` | Re-enter or revise planning for an existing spec. |
 | `/se-exec` | Build from a reviewed plan, verify the work, review it, and prepare the PR. |
-| `/se-pr-triage` | Handle review comments and CI failures after a PR is open. |
+| `/se-pr-triage` | Handle review comments through separate fix and final-reply approvals, plus autonomous CI triage. |
 
 Most users start with `/se-discuss`, then follow the prompts. You can also describe the work naturally and let the agent choose the matching entrypoint.
 
