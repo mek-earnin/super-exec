@@ -216,13 +216,13 @@ super-exec/
 │   ├── hooks/                        # PreToolUse guards + SessionStart marker
 │   └── skills/
 │       ├── using-super-exec/         # bootstrap; references/cursor-tools.md = the one-way CC→Cursor translation
-│       ├── se-discuss/                 # + branch-gate.md, branch-context, spec-template.md
+│       ├── se-discuss/                 # + branch-gate.md, branch-context, spec-template.md, context-format.md, adr-format.md
 │       ├── se-plan/                  # + plan-template.md
 │       ├── se-exec/                  # + worktree.md
 │       ├── se-verify/, se-review/    # inner & outer loops
 │       ├── se-pr/                    # + pr-template.md
 │       ├── se-pr-triage/              # + ci-triage.md; post-PR review/CI triage
-│       ├── se-handoff/               # + handoff-outline.md
+│       ├── se-handoff/               # + handoff-template.md
 │       ├── se-subagent/              # internal: model tiers + dispatch discipline (user-invocable: false)
 │       ├── se-commit/                # universal commit chokepoint: review floor + staging isolation + message
 │       └── se-local-ignore/         # internal: + ensure-local-ignore; keep .super-exec/ out of git via .git/info/exclude (user-invocable: false)

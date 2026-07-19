@@ -1,11 +1,11 @@
 ---
 name: se-exec
-description: Use this when a reviewed plan exists and it's time to BUILD — executes the plan task by task with verification and code review running in subagents, then opens a PR. Triggers on "implement the plan", "start building", "execute", "build it", or starting a fresh session after planning. The third step of the super-exec workflow; it keeps the controller lean, never claims done without evidence, and hands off to se-pr when the branch is review-clean.
+description: Use when a reviewed plan exists and it's time to BUILD it — "implement the plan", "start building", "execute", "build it", or starting a fresh session after planning.
 ---
 
 # se-exec — Build Session Orchestrator
 
-se-exec is the **controller** for the entire execute session. It locates the plan, records the session toggles once, and then drives two nested loops — the **outer review loop** (se-review) wrapping the **inner verify loop** (se-verify) — until the branch is review-clean and handed to se-pr. It delegates every heavy operation to subagents or sibling skills. Nothing substantial runs inline in the controller.
+se-exec is the **controller** for the whole execute session. Locates the plan, records the session toggles once, then drives two nested loops — the **outer review loop** (/se-review) wrapping the **inner verify loop** (/se-verify) — until the branch is review-clean and handed to /se-pr. Delegates every heavy operation to subagents or sibling skills. **Nothing substantial runs inline in the controller.**
 
 ---
 
@@ -18,21 +18,21 @@ and `started: <current UTC ISO-8601>` while you **preserve any existing `active_
 **preserve `branch` if present**. Create `.super-exec/` if needed. If the marker cannot be read or
 merged safely, defer the marker write until step 1 selects the plan; do not replace the file with a
 minimal marker that drops `active_plan`. This makes the enforcement guards live for the session —
-including the hard commit-block while a review gate is open. Existence + mtime are what the hooks
-read; the stale-marker decision is a model-judged heuristic with no fixed TTL. **Immediately after
-writing the marker, invoke `/se-local-ignore`.** Behavior is identical for manual and auto
-invocation. If invoked
-with `--worktree`, run the build in an isolated worktree (load [@./worktree.md](./worktree.md)
-on demand). If manual invocation includes an explicit plan path — either a `plan.md` file path or a
-plan directory containing `plan.md` — use that exact plan and skip the plan-confirmation prompt. If
-the path cannot be resolved to `plan.md`, stop and ask for the corrected path. If no explicit path is
-provided, first check the preserved `.super-exec/active` for `active_plan:` and ask the user to
-confirm that plan. If the marker has no active plan, fall back to latest-plan discovery and ask the
-user to confirm. Any other argument is a feature slug / ticket to help locate the plan — still
-confirm.
-`.super-exec/active` is cleared by se-pr on PR completion, or by se-exec itself on the no-PR exit
-(final review with *Auto-PR* OFF and the user declines the PR — step 10);
-se-handoff never clears it.
+including the hard commit-block while a review gate is open. Hooks read existence + mtime; the
+stale-marker decision is a model-judged heuristic with no fixed TTL. **Immediately after writing the
+marker, invoke `/se-local-ignore`.** Behavior is identical for manual and auto invocation. If
+invoked with `--worktree`, run the build in an isolated worktree (load
+[@./worktree.md](./worktree.md) on demand).
+
+Plan-path resolution: if manual invocation includes an explicit plan path — a `plan.md` file path or
+a directory containing `plan.md` — use that exact plan and skip the plan-confirmation prompt; if the
+path cannot be resolved to `plan.md`, stop and ask for the corrected path. If no explicit path, check
+the preserved `.super-exec/active` for `active_plan:` and ask the user to confirm that plan; if the
+marker has no active plan, fall back to latest-plan discovery and ask the user to confirm. Any other
+argument is a feature slug / ticket to help locate the plan — still confirm.
+
+`.super-exec/active` is cleared by /se-pr on PR completion, or by se-exec itself on the no-PR exit
+(final review with *Auto-PR* OFF and the user declines the PR — step 10); /se-handoff never clears it.
 
 ---
 
@@ -48,15 +48,15 @@ SESSION START
   FOR EACH TASK (sequential unless file-disjoint):
 
     ┌──────────────────────────────────────────────────┐
-    │  OUTER LOOP  (se-review)                         │
+    │  OUTER LOOP  (/se-review)                         │
     │                                                  │
     │  ┌────────────────────────────────────────────┐  │
-    │  │  INNER LOOP  (se-verify)                   │  │
+    │  │  INNER LOOP  (/se-verify)                   │  │
     │  │                                            │  │
     │  │  implementer subagent                      │  │
     │  │    └─ invoke bound repo skill first        │  │
     │  │    └─ impeccable craft (if UI + installed)  │  │
-    │  │  → se-verify (runner → judge)              │  │
+    │  │  → /se-verify (runner → judge)              │  │
     │  │    └─ FAIL (bug) → fixer → re-verify → loop│  │
     │  │    └─ FAIL (limitation) → escalate (6e)    │  │
     │  │    └─ PASS → inner-loop-green              │  │
@@ -68,10 +68,10 @@ SESSION START
     │         show diff + proposed commit msg          │
     │         WAIT for human                           │
     │         clear .super-exec/gate-open              │
-    │    └─ commit via se-commit (pass implementer     │
-    │         file list; se-commit owns the rest)      │
+    │    └─ commit via /se-commit (pass implementer     │
+    │         file list; /se-commit owns the rest)      │
     │                                                  │
-    │  se-review (arch-gate → deep-review → severity) │
+    │  /se-review (arch-gate → deep-review → severity) │
     │    └─ Critical/Important → re-enter inner loop   │
     │    └─ Minor → reported, non-blocking             │
     │    └─ fresh reviewer re-reviews after fixes      │
@@ -80,19 +80,19 @@ SESSION START
 
   ALL TASKS CLEAN
     └─ reviewer final spec-match assertion (built behavior still matches spec?)
-    └─ AUTO-PR ON  → invoke se-pr (opens PR, no review)
+    └─ AUTO-PR ON  → invoke /se-pr (opens PR, no review)
     └─ AUTO-PR OFF → write gate-open → final human review → WAIT
          └─ "Create a draft PR?"  NO  → clear gate-open + active → DONE (no PR)
-                                  YES → clear gate-open → invoke se-pr
+                                  YES → clear gate-open → invoke /se-pr
 
   LIMITATION ESCALATION (step 6e — no fix, spec unachievable as written):
     └─ try a workaround meeting spec intent → found? apply, continue
     └─ no workaround:
          AUTO-PR OFF → ask human (requirement + limitation + recommendation)
          AUTO-PR ON  → amend spec to closest achievable + note limitation
-                          → commit spec via se-commit → rebuild to revised spec → re-verify
+                          → commit spec via /se-commit → rebuild to revised spec → re-verify
 
-  CONTEXT LOW (model-judged) → invoke se-handoff → pause
+  CONTEXT LOW (model-judged) → invoke /se-handoff → pause
 ```
 
 ---
@@ -118,9 +118,9 @@ Complete every item in order. Do not skip or reorder steps.
 
 Resolve in this order:
 
-1. **Explicit path from manual invocation** — if the user provided an absolute or relative `plan.md`, or a directory containing `plan.md`, use that plan directory without asking for confirmation; the path itself is the confirmation. If the path cannot be resolved to `plan.md`, stop and ask for the corrected path.
-2. **Active marker** — if no explicit path was provided, read `.super-exec/active`. If it contains `active_plan: <path>`, resolve that path to `plan.md` and ask the user to confirm this plan before proceeding. If `active_plan` exists but cannot be resolved, tell the user the marker points at a missing plan and stop; do not silently choose a different plan.
-3. **Latest plan fallback** — if there is no explicit path and no `active_plan`, match the plan directory by the current branch name or ticket number → then by feature name → then by the most-recent plan dir under `.super-exec/NNNN-<feature>/`. Ask the user to confirm this inferred match before proceeding.
+1. **Explicit path from manual invocation** — user gave an absolute/relative `plan.md`, or a directory containing `plan.md` → use that plan directory without asking; the path itself is the confirmation. If it cannot be resolved to `plan.md`, stop and ask for the corrected path.
+2. **Active marker** — no explicit path → read `.super-exec/active`. If it has `active_plan: <path>`, resolve that path to `plan.md` and ask the user to confirm before proceeding. If `active_plan` exists but cannot be resolved, tell the user the marker points at a missing plan and stop; do not silently choose a different plan.
+3. **Latest plan fallback** — no explicit path and no `active_plan` → match the plan directory by current branch name or ticket number → then feature name → then the most-recent plan dir under `.super-exec/NNNN-<feature>/`. Ask the user to confirm this inferred match before proceeding.
 
 If no plan is found, tell the user no executable plan was found and stop. Once a plan is selected by any path above, update `.super-exec/active` with `phase: exec`, `active_plan: <repo-relative path to plan.md>`, `started: <current UTC ISO-8601>`, and the existing `branch` value if one was present and still matches the selected plan. Do not assume silently.
 
@@ -134,7 +134,7 @@ If `handoff.md` exists in the plan dir, read it. Resume from the **next unstarte
 
 ## 3. Read the plan/spec and seed task state
 
-Read `plan.md` in full. Read the linked spec under `docs/specs/...` in full. Understand the acceptance criteria, execution checklist, and verification design recorded in the plan before dispatching anything. If the harness exposes native task/todo tooling, use the CC primitive `TodoWrite` or its translated equivalent from the harness translation table. Seed or sync the native list from `## Execution Checklist`, preserving checked items as completed and selecting the next unchecked item as in progress. The native task/todo list is the operational session state; plan frontmatter plus `## Execution Checklist` are the durable local resume state.
+Read `plan.md` in full. Read the linked spec under `docs/specs/...` in full. Understand the acceptance criteria, execution checklist, and verification design before dispatching anything. If the harness exposes native task/todo tooling, use the CC primitive `TodoWrite` or its translated equivalent from the harness translation table. Seed or sync the native list from `## Execution Checklist`, preserving checked items as completed and selecting the next unchecked item as in progress. The native task/todo list is the operational session state; plan frontmatter plus `## Execution Checklist` are the durable local resume state.
 
 ## 4. Present the two session toggles
 
@@ -149,7 +149,7 @@ Record both answers. They are immutable for the session.
 
 ## 5. UI plan → impeccable auto-use (never ask)
 
-Determine whether this is a UI plan (derive from the plan/spec content — a frontend app or component/style changes). **Never ask the user whether to use impeccable.** On a UI plan, impeccable is used automatically wherever it is installed: `craft` at execute (step 6a) and the `critique` lens at review (se-review). Availability is detected at each phase (glob `.claude/skills/impeccable*/SKILL.md` or equivalent); if absent, those passes are skipped gracefully with a note, never blocked. No `AskUserQuestion` prompt about impeccable at any point in the session.
+Determine whether this is a UI plan (derive from the plan/spec content — a frontend app or component/style changes). **Never ask the user whether to use impeccable.** On a UI plan, impeccable is used automatically wherever it is installed: `craft` at execute (step 6a) and the `critique` lens at review (/se-review). Availability is detected at each phase (glob `.claude/skills/impeccable*/SKILL.md` or equivalent); if absent, those passes are skipped gracefully with a note, never blocked. No `AskUserQuestion` prompt about impeccable at any point in the session.
 
 ## 6. Per task — inner loop
 
@@ -157,7 +157,7 @@ For each executable task in plan order (respecting the parallelism rule below). 
 
 **Task transition sync.** Before starting a task, update the native task/todo tool first (mark previous outer-loop-clean task complete, current task in progress, future tasks pending), then sync `plan.md` only for durable state already earned: frontmatter `status` and completed checkboxes. On every task transition, keep the native tool and plan checklist aligned. If no native task/todo tool exists in the harness, use the plan checklist as the source of truth and state that the native sync step is unavailable.
 
-**6a. Dispatch implementer.** Dispatch an implementer subagent using the `Task` tool (implementer / mid tier — see the `se-subagent` skill). The implementer MUST:
+**6a. Dispatch implementer.** Dispatch an implementer subagent using the `Task` tool (implementer / mid tier — see the `/se-subagent` skill). The implementer MUST:
 1. Check the plan's recorded binding and **invoke the task's bound repo skill BEFORE hand-rolling any logic**.
 2. Re-check the repo skill catalog for any unplanned work the task requires — use a skill if one covers it.
 3. On a UI plan, build UI tasks via impeccable `craft` whenever impeccable is installed (detect per phase); skip gracefully with a note when absent. Never ask the user.
@@ -166,11 +166,11 @@ The implementer reports back a summary **including the explicit list of files it
 
 **6b. Parallelism rule.** Independent tasks that touch **completely disjoint file sets** may be dispatched in parallel using the `Task` tool. Any two tasks that share even one file MUST run sequentially. When in doubt, run sequentially.
 
-**6c. Invoke `/se-verify`.** Pass the task description and the plan's verification design (baseline commands + task-specific method). se-verify owns the runner→judge loop and reports one of: **inner-loop-green**, or **limitation-blocked** (the spec is not achievable as written — a real constraint, not a fixable bug — see step 6e).
+**6c. Invoke `/se-verify`.** Pass the task description and the plan's verification design (baseline commands + task-specific method). /se-verify owns the runner→judge loop and reports one of: **inner-loop-green**, or **limitation-blocked** (the spec is not achievable as written — a real constraint, not a fixable bug — see step 6e).
 
 **6d. Inner-loop-green is confirmed — proceed to the commit step.**
 
-**6e. Limitation escalation (only when se-verify reports limitation-blocked).** The divergence is an *implementation limitation*, not an ordinary bug. The spec is authoritative — do NOT silently rewrite it. Resolve in this order:
+**6e. Limitation escalation (only when /se-verify reports limitation-blocked).** The divergence is an *implementation limitation*, not an ordinary bug. The spec is authoritative — do NOT silently rewrite it. Resolve in this order:
 1. **Try a workaround** that still satisfies the spec's *intent* (dispatch an implementer with the `Task` tool, passing the limitation + the intent to preserve). If a workaround passes verification, apply it and return to the commit step — the spec is unchanged.
 2. **No workaround** → branch on the *Auto-PR* toggle:
    - **Auto-PR OFF (human in the loop):** STOP and use `AskUserQuestion` to ask the user — state the spec requirement, the limitation, and your recommendation. The answer may change the spec (WHAT-only) and the implementation. If the change is architectural, recommend `/se-plan` re-entry; otherwise update the spec and the code inline, then re-verify. On approval, commit the spec change via **`/se-commit`** (pass the spec / ADR paths), unless declined / gitignored.
@@ -184,13 +184,13 @@ If **review-before-commit is ON**:
 3. **WAIT** for human approval.
 4. Clear `.super-exec/gate-open` before proceeding.
 
-Commit via **`/se-commit`**, passing the explicit list of files this task's implementer reported touching (one commit per task). se-commit owns all commit mechanics — staging isolation, the message, and the runner-subagent dispatch; the controller issues no git commands inline.
+Commit via **`/se-commit`**, passing the explicit list of files this task's implementer reported touching (one commit per task). /se-commit owns all commit mechanics — staging isolation, the message, and the runner-subagent dispatch; the controller issues no git commands inline.
 
 When review-before-commit is **OFF**, commit immediately on inner-loop-green without seeking per-commit approval — the OFF toggle (step 4) is the user's standing authorization, so each per-task commit is user-requested, not proactive. Pausing to ask "may I commit?" here is a defect. Per-commit approval applies only on the ON path above.
 
 ## 8. Outer loop — invoke `/se-review`
 
-se-review performs the arch-gate, deep-review, and severity-tagging pass on the committed task.
+/se-review performs the arch-gate, deep-review, and severity-tagging pass on the committed task.
 
 - **Critical or Important** findings → re-enter the inner loop (step 6) to fix; a **fresh reviewer** re-reviews from scratch after fixes.
 - **Minor** findings → reported, non-blocking.
@@ -229,7 +229,7 @@ No worktrees by default. If and only if the user passed **`--worktree`** at invo
 
 ## Model Tiers and Subagent Dispatch
 
-Dispatch all subagents with the `Task` tool. Resolve tier aliases from the `se-subagent` skill.
+Dispatch all subagents with the `Task` tool. Resolve tier aliases from the `/se-subagent` skill.
 
 | Role | Prose alias | Notes |
 |---|---|---|
@@ -254,6 +254,6 @@ Dispatch all subagents with the `Task` tool. Resolve tier aliases from the `se-s
 | "I'll add a couple of extra tests / a helper utility while I'm here." | Add unrequested tests, helpers, documentation, or any code not specified in the plan. | YAGNI. Only what the plan specifies. Extra additions go into a follow-up task or a new plan — not this session. |
 | "I'll commit now and show the diff after." | Commit during the review-before-commit gate without writing `.super-exec/gate-open` first and waiting for human approval. | Write `.super-exec/gate-open`, show the diff and proposed message, WAIT for explicit approval, then clear `.super-exec/gate-open`, then commit. The gate is not optional when review-before-commit is ON. |
 | "Better ask the human before committing this task — committing unprompted feels too proactive." | Pause to request per-commit approval when review-before-commit is OFF (often because a host agent policy says "only commit when the user asks"). | The OFF toggle IS the user's explicit standing authorization (step 4): each per-task commit is user-requested, not proactive. Commit on inner-loop-green without re-asking. Per-commit approval applies ONLY when review-before-commit is ON (write `gate-open`, wait). |
-| "I'll just keep going — I can probably finish before context runs out." | Continue past the model-judged context limit without invoking se-handoff. | When the controller judges it is approaching a context limit, invoke `/se-handoff` immediately, pause, and tell the user to `/clear` and re-run `/se-exec`. |
+| "I'll just keep going — I can probably finish before context runs out." | Continue past the model-judged context limit without invoking /se-handoff. | When the controller judges it is approaching a context limit, invoke `/se-handoff` immediately, pause, and tell the user to `/clear` and re-run `/se-exec`. |
 | "I'll use a worktree to be safe — it can't hurt." | Create a git worktree without the user having passed `--worktree`. | No worktrees unless `--worktree` was explicitly passed at invocation. Load [@./worktree.md](./worktree.md) on demand only when that flag is present. |
 | "This is a UI plan — I'll ask whether to use impeccable." | Prompt the user (with `AskUserQuestion` or otherwise) to opt in/out of impeccable. | Never ask. On a UI plan, impeccable is used automatically wherever it is installed (`craft` at execute, `critique` at review) and skipped with a note when absent. There is no opt-in question in any session. |

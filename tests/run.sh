@@ -930,7 +930,7 @@ task_sync_sites=(
   "plugin/skills/se-exec/SKILL.md|||operational session state"
   "plugin/skills/se-exec/SKILL.md|||durable local resume state"
   "plugin/skills/se-exec/SKILL.md|||update the native task/todo tool first"
-  "plugin/skills/using-super-exec/SKILL.md|||Individual skills do not branch by harness"
+  "plugin/skills/using-super-exec/SKILL.md|||Individual skills don't branch by harness"
   "docs/specs/0001-core-workflow.md|||native task/todo tool is operational session state"
 )
 
@@ -985,7 +985,7 @@ const templates = [
   'plugin/skills/se-plan/plan-template.md',
   'plugin/skills/se-discuss/spec-template.md',
   'plugin/skills/se-pr/pr-template.md',
-  'plugin/skills/se-handoff/handoff-outline.md',
+  'plugin/skills/se-handoff/handoff-template.md',
 ];
 
 const forbidden = [
@@ -1383,7 +1383,7 @@ const required = [
   [skill, 'Gate-1 approval authorizes only the approved Fix work. It never authorizes a PR reply.', 'skill Gate-1 authority'],
   [skill, 'Do not draft, generate, suggest, outline, or present any reply body — provisional, sample, or final — for any decision before step 7.', 'skill no pre-step-7 reply drafting'],
   [skill, 'The rationale is internal analysis for the human, not a draft addressed to the reviewer.', 'skill Gate-1 rationale is not reply copy'],
-  [skill, 'This is the first step where any reply text may be drafted.', 'skill reply composition starts at step 7'],
+  [skill, 'First step where any reply text may be drafted.', 'skill reply composition starts at step 7'],
   [skill, 'Placeholders such as `<SHA>` and provisional implementation wording are forbidden.', 'skill no provisional Fix replies'],
   [skill, 'Any reply target or body change after Gate-2 approval invalidates that approval', 'skill Gate-2 invalidation'],
   [skill, 'A round with only Decline / Answer / Defer items still performs this step after Gate 1.', 'skill no-Fix batch'],
