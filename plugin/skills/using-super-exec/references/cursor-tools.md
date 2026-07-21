@@ -32,6 +32,17 @@ super-exec names model **tiers** by family alias so they never go stale (see the
 
 ---
 
+## Skill frontmatter keys
+
+| Key | Claude Code | Cursor |
+|---|---|---|
+| `user-invocable: false` | Internal skill — humans can't invoke it directly; only other skills / the model load it (e.g. `/se-get-config`, `/se-slug-naming`) | Cursor-native equivalent — treat as internal; don't surface it as a user command |
+| `disable-model-invocation: true` | Skill is **human-invoked only** — the model never auto-invokes it (e.g. `/se-config`) | Cursor-native equivalent — mark the skill manual-only. If the host does **not** honor the key it **degrades gracefully**: the model may auto-load the skill, which is safe because these are read-first commands whose mutating paths (`se-config set`, `se-config migrate`) require explicit human arguments and `migrate` defaults to dry-run. |
+
+> `disable-model-invocation` is a hint about *who triggers* the skill, not a security boundary. On a harness that ignores it the skill still works; the worst case is a model-initiated invocation of a command that does nothing destructive without explicit args.
+
+---
+
 ## Human interaction
 
 | Concept | Claude Code | Cursor |
@@ -113,7 +124,7 @@ super-exec names model **tiers** by family alias so they never go stale (see the
 The super-exec guard registers on CC `PreToolUse` for both `Bash` and `Write|Edit|MultiEdit`. Two consequences on Cursor:
 
 1. **N1 / N2 nudges** (delegate build/test to a subagent; route git/PR mutations through the repo skill) rely on `additionalContext` on the allow path, which Cursor's allow path doesn't expose — they degrade to plain allow. Rely on skill-prose discipline instead.
-2. **N3 nudge** (don't write fenced code into a `docs/specs/*.md` spec) is backed by the file-edit hook registration. Cursor exposes **no generic pre-file event**, so N3 is **CC-only** and degrades to skill-prose discipline on Cursor — same posture as N1/N2.
+2. **N3 nudge** (don't write fenced code into a `spec-<feature>.md` under either root — `docs/specs/` or `.super-exec/specs/`) is backed by the file-edit hook registration. Cursor exposes **no generic pre-file event**, so N3 is **CC-only** and degrades to skill-prose discipline on Cursor — same posture as N1/N2.
 
 The **B1 hard block** (no commit while `.super-exec/gate-open` exists) fires through `beforeShellExecution` and is enforced on both harnesses.
 

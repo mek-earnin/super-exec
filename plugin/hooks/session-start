@@ -15,8 +15,8 @@
 #                      (se-discuss, se-plan, se-exec,     (final review with
 #                      se-pr-triage). se-plan adds        Auto-PR OFF and the user
 #                      active_plan immediately after      declines the PR); se-pr-triage
-#                      plan.md write.                     at the end of a triage round.
-#                      Anchor: immediately after plan.md write.
+#                      the plan file is written.          at the end of a triage round.
+#                      Anchor: immediately after the plan file is written.
 #                                                         SessionStart never deletes it.
 #
 # .super-exec/gate-open  se-exec — both the review-       se-exec, once the gate
@@ -34,11 +34,12 @@
 #     use the repo's git/PR skill via a subagent.
 #   - N1 (nudge): active + controller + build/test → allow + context nudge to
 #     delegate heavy work to a subagent.
-#   - N3 (nudge): active + write to docs/specs/*.md containing a fenced code
-#     block → allow + context nudge that the spec is WHAT-only and code belongs
-#     in the plan. Fires for controller AND subagents (code in a spec is wrong
-#     wherever written). Cursor has no generic pre-file event, so N3 degrades to
-#     prose there (not emitted).
+#   - N3 (nudge): active + write to a spec file (spec-*.md) under docs/specs/ OR
+#     .super-exec/specs/ containing a fenced code block → allow + context nudge
+#     that the spec is WHAT-only and code belongs in the plan. Fires for
+#     controller AND subagents (code in a spec is wrong wherever written).
+#     Cursor has no generic pre-file event, so N3 degrades to prose there (not
+#     emitted).
 #   - Subagents (agent_id present in CC payload) never receive N1/N2.
 #   - On Cursor: N1/N2 degrade to prose (no nudge emitted); B1 runs natively.
 #
@@ -204,15 +205,23 @@ if [ -f "${SUPER_EXEC_DIR}/active" ]; then
   set_plan_context_from_file() {
     local plan_file="$1"
     local source_note="$2"
-    local feature_dir feature plan_dir plan_name handoff_note line in_frontmatter parsed_status
+    local feature_dir feature plan_dir plan_name plan_parent handoff_note line in_frontmatter parsed_status
 
-    feature_dir=$(dirname "$(dirname "$plan_file")")
-    feature=$(basename "$feature_dir")
     plan_dir=$(dirname "$plan_file")
     plan_name=$(basename "$plan_dir")
+    # Feature dir differs by layout:
+    #   v1: <root>/[<app>/]<feature>/plans/<plan-dir>/plan-<name>.md (skip plans/)
+    #   v0: .super-exec/[<app>/]<feature>/<plan-dir>/plan.md
+    plan_parent=$(dirname "$plan_dir")
+    if [ "$(basename "$plan_parent")" = "plans" ]; then
+      feature_dir=$(dirname "$plan_parent")
+    else
+      feature_dir="$plan_parent"
+    fi
+    feature=$(basename "$feature_dir")
     handoff_note=""
-    if [ -f "${plan_dir}/handoff.md" ]; then
-      handoff_note=" (handoff.md present — mid-session handoff detected)"
+    if compgen -G "${plan_dir}/handoff-*.md" >/dev/null 2>&1 || [ -f "${plan_dir}/handoff.md" ]; then
+      handoff_note=" (handoff present — mid-session handoff detected)"
     fi
     plan_context="Feature: ${feature} / Plan dir: ${plan_name} (${source_note})${handoff_note}"
     plan_status=""
@@ -239,8 +248,8 @@ if [ -f "${SUPER_EXEC_DIR}/active" ]; then
     done < "$plan_file"
   }
 
-  # Prefer the concrete plan recorded in the active marker:
-  #   active_plan: .super-exec/NNNN-<feature>/<plan-dir>/plan.md
+  # Prefer the concrete plan recorded in the active marker (a plan file path):
+  #   active_plan: <root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md
   # The marker remains the active-session signal for guards; active_plan adds the
   # concrete plan target for resume/execute sessions.
   active_plan=""
@@ -264,27 +273,42 @@ if [ -f "${SUPER_EXEC_DIR}/active" ]; then
       *)  resolved_plan="${PROJECT_DIR}/${active_plan}" ;;
     esac
     if [ -d "$resolved_plan" ]; then
-      resolved_plan="${resolved_plan}/plan.md"
+      # Marker names a directory — locate the plan file inside it.
+      # v1: plan-<plan-name>.md; v0: plan.md.
+      plan_in_dir=""
+      for cand in "$resolved_plan"/plan-*.md "$resolved_plan/plan.md"; do
+        [ -f "$cand" ] && { plan_in_dir="$cand"; break; }
+      done
+      resolved_plan="${plan_in_dir:-${resolved_plan}/plan.md}"
     fi
     if [ -f "$resolved_plan" ]; then
       set_plan_context_from_file "$resolved_plan" "active_plan marker"
     else
-      invalid_plan_context="active_plan marker references ${active_plan}, but no plan.md exists there"
+      invalid_plan_context="active_plan marker references ${active_plan}, but no plan file exists there"
     fi
   fi
 
-  # Fallback when the marker does not yet name a plan: look for any in-progress
-  # plan directory: .super-exec/NNNN-<feature>/<plan-dir>/plan.md
-  if [ -d "${SUPER_EXEC_DIR}" ]; then
-    # Find the most recently modified plan.md that is NOT at the root level
-    # (plans live at depth 3: .super-exec/NNNN-<feature>/<plan-dir>/plan.md).
-    if [ -z "$plan_context" ] && [ -z "$invalid_plan_context" ]; then
-      while IFS= read -r plan_file; do
-        set_plan_context_from_file "$plan_file" "latest plan discovery"
-        break  # Use the most recently modified one
-      done < <(find "${SUPER_EXEC_DIR}" -mindepth 3 -maxdepth 3 -name "plan.md" \
-                 -exec ls -t1 {} + 2>/dev/null | head -1 | xargs -I{} dirname {} \
-                 | xargs -I{} find {} -name "plan.md" 2>/dev/null || true)
+  # Fallback when the marker does not name a concrete plan: discover the most
+  # recently modified plan file across BOTH roots and BOTH layouts.
+  #   v1: <root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md
+  #   v0: .super-exec/[<app>/]<feature>/<plan-dir>/plan.md
+  # (<root> = .super-exec/specs OR docs/specs.) Best-effort orientation only —
+  # the active_plan marker above stays authoritative whenever it is present.
+  if [ -z "$plan_context" ] && [ -z "$invalid_plan_context" ]; then
+    discovery_roots=()
+    [ -d "${SUPER_EXEC_DIR}" ] && discovery_roots+=("${SUPER_EXEC_DIR}")
+    [ -d "${PROJECT_DIR}/docs/specs" ] && discovery_roots+=("${PROJECT_DIR}/docs/specs")
+    if [ "${#discovery_roots[@]}" -gt 0 ]; then
+      # `|| true`: under `set -euo pipefail`, `head -1` closing the pipe early
+      # makes `ls` take SIGPIPE and `pipefail` propagate nonzero — without this
+      # guard `set -e` would abort the ENTIRE hook (dropping ALL orientation)
+      # once the plan-file list is large enough to overflow the pipe buffer.
+      latest_plan_file=$(find "${discovery_roots[@]}" -mindepth 2 -type f \
+        \( -name 'plan.md' -o -name 'plan-*.md' \) \
+        -exec ls -t1 {} + 2>/dev/null | head -1 || true)
+      if [ -n "$latest_plan_file" ]; then
+        set_plan_context_from_file "$latest_plan_file" "latest plan discovery"
+      fi
     fi
   fi
 
@@ -301,7 +325,7 @@ if [ -f "${SUPER_EXEC_DIR}/active" ]; then
   elif [ -n "$invalid_plan_context" ]; then
     resume_note="\n\n---\n**SUPER-EXEC SESSION IN PROGRESS (active plan invalid)**\n\nA super-exec \`active\` marker exists (marker age: ${active_mtime:-unknown}). ${invalid_plan_context}. Surface this to the user; do NOT silently choose a different plan and do NOT auto-delete the marker.\n---"
   else
-    resume_note="\n\n---\n**SUPER-EXEC SESSION IN PROGRESS (no in-progress plan found)**\n\nA super-exec \`active\` marker exists (marker age: ${active_mtime:-unknown}) but no in-progress plan.md was found under \`.super-exec/\`. This may indicate the session never advanced past discuss/plan, or the plan directory was cleaned up. If the marker looks stale, surface that to the user. Do NOT auto-delete the marker.\n---"
+    resume_note="\n\n---\n**SUPER-EXEC SESSION IN PROGRESS (no in-progress plan found)**\n\nA super-exec \`active\` marker exists (marker age: ${active_mtime:-unknown}) but no in-progress plan file was found under \`.super-exec/\` or \`docs/specs/\`. This may indicate the session never advanced past discuss/plan, or the plan directory was cleaned up. If the marker looks stale, surface that to the user. Do NOT auto-delete the marker.\n---"
   fi
 fi
 

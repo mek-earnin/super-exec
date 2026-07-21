@@ -1,0 +1,6 @@
+{
+  "tool_input": {
+    "file_path": "docs/specs/payment-retry/plans/2026-07-20-retry-v1/plan-retry-v1.md",
+    "content": "# Retry plan\n\n```ts\nexport const retry = () => {};\n```\n"
+  }
+}

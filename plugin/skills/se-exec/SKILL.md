@@ -24,12 +24,13 @@ marker, invoke `/se-local-ignore`.** Behavior is identical for manual and auto i
 invoked with `--worktree`, run the build in an isolated worktree (load
 [@./worktree.md](./worktree.md) on demand).
 
-Plan-path resolution: if manual invocation includes an explicit plan path — a `plan.md` file path or
-a directory containing `plan.md` — use that exact plan and skip the plan-confirmation prompt; if the
-path cannot be resolved to `plan.md`, stop and ask for the corrected path. If no explicit path, check
-the preserved `.super-exec/active` for `active_plan:` and ask the user to confirm that plan; if the
-marker has no active plan, fall back to latest-plan discovery and ask the user to confirm. Any other
-argument is a feature slug / ticket to help locate the plan — still confirm.
+Plan-path resolution: if manual invocation includes an explicit plan path — a plan file
+(`plan-<plan-name>.md`) or a directory containing one — use that exact plan and skip the
+plan-confirmation prompt; if the path cannot be resolved to a plan file, stop and ask for the
+corrected path. If no explicit path, check the preserved `.super-exec/active` for `active_plan:` and
+ask the user to confirm that plan; if the marker has no active plan, fall back to latest-plan
+discovery and ask the user to confirm. Any other argument is a feature slug / ticket to help locate
+the plan — still confirm.
 
 `.super-exec/active` is cleared by /se-pr on PR completion, or by se-exec itself on the no-PR exit
 (final review with *Auto-PR* OFF and the user declines the PR — step 10); /se-handoff never clears it.
@@ -40,9 +41,9 @@ argument is a feature slug / ticket to help locate the plan — still confirm.
 
 ```
 SESSION START
-  └─ locate + confirm plan (+ handoff resume if handoff.md present)
+  └─ locate + confirm plan (+ handoff resume if handoff-<plan-name>.md present)
   └─ read plan frontmatter + checklist + spec
-  └─ present 2 toggles ONCE
+  └─ resolve 2 session settings from /se-get-config (ask only when "ask")
   └─ (UI plan → impeccable used automatically if installed; never ask)
 
   FOR EACH TASK (sequential unless file-disjoint):
@@ -89,7 +90,7 @@ SESSION START
     └─ try a workaround meeting spec intent → found? apply, continue
     └─ no workaround:
          AUTO-PR OFF → ask human (requirement + limitation + recommendation)
-         AUTO-PR ON  → amend spec to closest achievable + note limitation
+         AUTO-PR ON  → amend spec (<root>/[<app>/]<feature>/spec-<feature>.md) + note limitation
                           → commit spec via /se-commit → rebuild to revised spec → re-verify
 
   CONTEXT LOW (model-judged) → invoke /se-handoff → pause
@@ -118,34 +119,41 @@ Complete every item in order. Do not skip or reorder steps.
 
 Resolve in this order:
 
-1. **Explicit path from manual invocation** — user gave an absolute/relative `plan.md`, or a directory containing `plan.md` → use that plan directory without asking; the path itself is the confirmation. If it cannot be resolved to `plan.md`, stop and ask for the corrected path.
-2. **Active marker** — no explicit path → read `.super-exec/active`. If it has `active_plan: <path>`, resolve that path to `plan.md` and ask the user to confirm before proceeding. If `active_plan` exists but cannot be resolved, tell the user the marker points at a missing plan and stop; do not silently choose a different plan.
-3. **Latest plan fallback** — no explicit path and no `active_plan` → match the plan directory by current branch name or ticket number → then feature name → then the most-recent plan dir under `.super-exec/NNNN-<feature>/`. Ask the user to confirm this inferred match before proceeding.
+1. **Explicit path from manual invocation** — user gave an absolute/relative plan file (`plan-<plan-name>.md`), or a directory containing one → use that plan directory without asking; the path itself is the confirmation. If it cannot be resolved to a plan file, stop and ask for the corrected path.
+2. **Active marker** — no explicit path → read `.super-exec/active`. If it has `active_plan: <path>`, resolve that exact recorded path to the plan file and ask the user to confirm before proceeding. If `active_plan` exists but cannot be resolved, tell the user the marker points at a missing plan and stop; do not silently choose a different plan.
+3. **Latest plan fallback** — no explicit path and no `active_plan` → match the plan directory by current branch name or ticket number → then feature name → then the most-recent plan under BOTH roots (`docs/specs/` and `.super-exec/specs/`) at `<root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md`. Ask the user to confirm this inferred match before proceeding.
 
-If no plan is found, tell the user no executable plan was found and stop. Once a plan is selected by any path above, update `.super-exec/active` with `phase: exec`, `active_plan: <repo-relative path to plan.md>`, `started: <current UTC ISO-8601>`, and the existing `branch` value if one was present and still matches the selected plan. Do not assume silently.
+If no plan is found, tell the user no executable plan was found and stop. Once a plan is selected by any path above, update `.super-exec/active` with `phase: exec`, `active_plan: <repo-relative path to the plan file>`, `started: <current UTC ISO-8601>`, and the existing `branch` value if one was present and still matches the selected plan. Do not assume silently.
 
 ## 2. Check frontmatter, status, checklist, and handoff
 
 Read the plan's YAML frontmatter before or with the first `## Execution Checklist`. If frontmatter has `branch`, branch validation depends on mode: normal mode must verify the current git branch matches `branch`; `--worktree` mode validates the main checkout before worktree creation, then the worktree setup checks out or creates the worktree branch. Do not fail a worktree run merely because the main checkout no longer matches after the worktree exists. On a real mismatch, stop and ask the user whether to switch branches, choose a different plan, or continue via the explicit worktree path — do not silently continue.
 
-**Completion guard:** treat the plan as already completed only when either frontmatter `status: completed` is present, or the checklist exists, has at least one item, and every item in the first `## Execution Checklist` is checked, with no `handoff.md` pointing at unfinished work. In either completed case, tell the user the plan is already completed and stop before steps 3-10. A missing checklist is never completed. If there is no checklist and status is not completed, fall back to `## Tasks` plus any handoff-based resume evidence; if that is ambiguous, ask the user to update or confirm the resume point rather than declaring the plan completed.
+**Completion guard:** treat the plan as already completed only when either frontmatter `status: completed` is present, or the checklist exists, has at least one item, and every item in the first `## Execution Checklist` is checked, with no `handoff-<plan-name>.md` pointing at unfinished work. In either completed case, tell the user the plan is already completed and stop before steps 3-10. A missing checklist is never completed. If there is no checklist and status is not completed, fall back to `## Tasks` plus any handoff-based resume evidence; if that is ambiguous, ask the user to update or confirm the resume point rather than declaring the plan completed.
 
-If `handoff.md` exists in the plan dir, read it. Resume from the **next unstarted task** — skip all tasks marked completed in the handoff or checked in the plan checklist. Do NOT redo completed tasks, re-litigate decisions, or reset toggle state. The handoff is authoritative when present. Once the selected plan is not already complete and the branch check passes, update `status` from `pending` to `in_progress`; if status is blank or absent, set `in_progress` without changing other metadata.
+If `handoff-<plan-name>.md` exists in the plan dir, read it. Resume from the **next unstarted task** — skip all tasks marked completed in the handoff or checked in the plan checklist. Do NOT redo completed tasks, re-litigate decisions, or reset toggle state. The handoff is authoritative when present. Once the selected plan is not already complete and the branch check passes, update `status` from `pending` to `in_progress`; if status is blank or absent, set `in_progress` without changing other metadata.
 
 ## 3. Read the plan/spec and seed task state
 
-Read `plan.md` in full. Read the linked spec under `docs/specs/...` in full. Understand the acceptance criteria, execution checklist, and verification design before dispatching anything. If the harness exposes native task/todo tooling, use the CC primitive `TodoWrite` or its translated equivalent from the harness translation table. Seed or sync the native list from `## Execution Checklist`, preserving checked items as completed and selecting the next unchecked item as in progress. The native task/todo list is the operational session state; plan frontmatter plus `## Execution Checklist` are the durable local resume state.
+Read the plan file (`plan-<plan-name>.md`) in full. Read the linked spec from its v1 location under EITHER root — `<root>/[<app>/]<feature>/spec-<feature>.md` where `<root>` ∈ {`docs/specs/`, `.super-exec/specs/`} — in full. Understand the acceptance criteria, execution checklist, and verification design before dispatching anything. If the harness exposes native task/todo tooling, use the CC primitive `TodoWrite` or its translated equivalent from the harness translation table. Seed or sync the native list from `## Execution Checklist`, preserving checked items as completed and selecting the next unchecked item as in progress. The native task/todo list is the operational session state; plan frontmatter plus `## Execution Checklist` are the durable local resume state.
 
 ## 4. Present the two session toggles
 
-Use the `AskUserQuestion` tool to ask both toggles in a single prompt. Do not ask them separately. Do not ask again mid-session.
+**Consult `/se-get-config` first.** Invoke `/se-get-config` and read `humanReviewBeforeCheckpointCommit` and `autoCreatePr`. Resolve each setting BEFORE any prompt:
+
+- `humanReviewBeforeCheckpointCommit` → the *Review before each commit?* setting: config `true` = review ON; `false` = OFF / auto-commit.
+- `autoCreatePr` → the *Auto-PR?* setting: config `true` = Auto-PR ON; `false` = OFF.
+
+For EACH setting: resolved `true` or `false` → use it directly, do NOT ask. Resolved `"ask"` → prompt the user for that one via `AskUserQuestion`. Ask ONLY the settings that resolved to `"ask"`, batched into a SINGLE `AskUserQuestion` prompt (ask both together when both are `"ask"`; ask the single one when only one is; skip the `AskUserQuestion` ENTIRELY when neither is `"ask"`). Do not ask again mid-session.
+
+Keep these meanings for whichever path supplies the value (config or prompt):
 
 - *Review before each commit?* — default **OFF** (auto-commit on inner-loop-green). Choosing **OFF** is the user's explicit, standing authorization to commit each task automatically: every per-task commit is then a *user-requested* commit, not a proactive one. When OFF, never pause to re-ask for commit approval — the toggle already granted it. (This is what satisfies a host agent policy that otherwise forbids committing without an explicit per-action user request.)
 - *Auto-PR?* — default **OFF**. This is the **"human in the loop?"** signal that governs the final review, the limitation-escalation branch, and PR creation.
   - **OFF** → human in the loop: pause for a final work review, ask before opening a draft PR, and ask the user on any blocker that cannot be worked around.
   - **ON** → no human in the loop: no final review; self-resolve unworkable blockers by amending the spec to the closest achievable behavior + a limitation note; open the PR automatically. (The PR review + manual merge stay the human's gate.)
 
-Record both answers. They are immutable for the session.
+Record both resolved values. They are immutable for the session.
 
 ## 5. UI plan → impeccable auto-use (never ask)
 
@@ -155,7 +163,7 @@ Determine whether this is a UI plan (derive from the plan/spec content — a fro
 
 For each executable task in plan order (respecting the parallelism rule below). The `Final review / PR decision` checklist item is not an executable task, is never dispatched to an implementer, and belongs to step 10 only.
 
-**Task transition sync.** Before starting a task, update the native task/todo tool first (mark previous outer-loop-clean task complete, current task in progress, future tasks pending), then sync `plan.md` only for durable state already earned: frontmatter `status` and completed checkboxes. On every task transition, keep the native tool and plan checklist aligned. If no native task/todo tool exists in the harness, use the plan checklist as the source of truth and state that the native sync step is unavailable.
+**Task transition sync.** Before starting a task, update the native task/todo tool first (mark previous outer-loop-clean task complete, current task in progress, future tasks pending), then sync the plan file only for durable state already earned: frontmatter `status` and completed checkboxes. On every task transition, keep the native tool and plan checklist aligned. If no native task/todo tool exists in the harness, use the plan checklist as the source of truth and state that the native sync step is unavailable.
 
 **6a. Dispatch implementer.** Dispatch an implementer subagent using the `Task` tool (implementer / mid tier — see the `/se-subagent` skill). The implementer MUST:
 1. Check the plan's recorded binding and **invoke the task's bound repo skill BEFORE hand-rolling any logic**.
@@ -173,8 +181,8 @@ The implementer reports back a summary **including the explicit list of files it
 **6e. Limitation escalation (only when /se-verify reports limitation-blocked).** The divergence is an *implementation limitation*, not an ordinary bug. The spec is authoritative — do NOT silently rewrite it. Resolve in this order:
 1. **Try a workaround** that still satisfies the spec's *intent* (dispatch an implementer with the `Task` tool, passing the limitation + the intent to preserve). If a workaround passes verification, apply it and return to the commit step — the spec is unchanged.
 2. **No workaround** → branch on the *Auto-PR* toggle:
-   - **Auto-PR OFF (human in the loop):** STOP and use `AskUserQuestion` to ask the user — state the spec requirement, the limitation, and your recommendation. The answer may change the spec (WHAT-only) and the implementation. If the change is architectural, recommend `/se-plan` re-entry; otherwise update the spec and the code inline, then re-verify. On approval, commit the spec change via **`/se-commit`** (pass the spec / ADR paths), unless declined / gitignored.
-   - **Auto-PR ON (no human in the loop):** the agent amends the spec **itself** to the **closest achievable** behavior and annotates the spec's *Decisions* section — *"Due to `<limitation>`, cannot achieve `<original behavior>`; closest achievable is `<X>`."* — WHAT-only, no code. Commit the spec change via **`/se-commit`** (pass the spec file path), rebuild the task to the revised spec, and re-verify. No interrupt. The amendment lands in the PR the human reviews.
+   - **Auto-PR OFF (human in the loop):** STOP and use `AskUserQuestion` to ask the user — state the spec requirement, the limitation, and your recommendation. The answer may change the spec (WHAT-only) and the implementation. If the change is architectural, recommend `/se-plan` re-entry; otherwise update the spec and the code inline, then re-verify. On approval, commit the spec change via **`/se-commit`** (pass the spec / ADR paths at their v1 location `<root>/[<app>/]<feature>/spec-<feature>.md` under either `docs/specs/` or `.super-exec/specs/`), unless declined / gitignored.
+   - **Auto-PR ON (no human in the loop):** the agent amends the spec **itself** to the **closest achievable** behavior and annotates the spec's *Decisions* section — *"Due to `<limitation>`, cannot achieve `<original behavior>`; closest achievable is `<X>`."* — WHAT-only, no code. Commit the spec change via **`/se-commit`** (pass the spec file path at `<root>/[<app>/]<feature>/spec-<feature>.md`), rebuild the task to the revised spec, and re-verify. No interrupt. The amendment lands in the PR the human reviews.
 
 ## 7. Commit step
 
@@ -195,11 +203,11 @@ When review-before-commit is **OFF**, commit immediately on inner-loop-green wit
 - **Critical or Important** findings → re-enter the inner loop (step 6) to fix; a **fresh reviewer** re-reviews from scratch after fixes.
 - **Minor** findings → reported, non-blocking.
 - Loop until a fresh reviewer declares the task clean.
-- After the task is committed and outer-loop-clean, update the native task/todo tool first, then update only that task's checkbox in `plan.md` `## Execution Checklist` from `[ ]` to `[x]`. Do not edit any other plan content except frontmatter `status` updates described in this checklist.
+- After the task is committed and outer-loop-clean, update the native task/todo tool first, then update only that task's checkbox in the plan's `## Execution Checklist` from `[ ]` to `[x]`. Do not edit any other plan content except frontmatter `status` updates described in this checklist.
 
 ## 9. Context hygiene — monitor throughout
 
-The controller monitors its own context depth continuously using a **model-judged heuristic** (no fixed token count). When the controller judges it is approaching a context limit mid-build, invoke **`/se-handoff`** immediately to write `handoff.md`, then pause and instruct the user to `/clear` and re-run `/se-exec`. Do NOT continue past the limit hoping to finish.
+The controller monitors its own context depth continuously using a **model-judged heuristic** (no fixed token count). When the controller judges it is approaching a context limit mid-build, invoke **`/se-handoff`** immediately to write `handoff-<plan-name>.md` in the same plan folder, then pause and instruct the user to `/clear` and re-run `/se-exec`. Do NOT continue past the limit hoping to finish.
 
 ## 10. Final spec-match assertion and PR decision
 
@@ -217,7 +225,7 @@ When every executable task is inner-loop-green, committed, and outer-loop-clean,
 
 ## Scope Guard (YAGNI)
 
-Implement **only** what the plan specifies. Do not add extra tests, helper utilities, documentation sections, or any logic not required by a plan task. During execution, `plan.md` is read-only except for marking items complete in the first `## Execution Checklist` section and updating frontmatter `status` (`pending` / `in_progress` / `completed`). Do not edit architecture, task descriptions, verification design, or any other plan content.
+Implement **only** what the plan specifies. Do not add extra tests, helper utilities, documentation sections, or any logic not required by a plan task. During execution, the plan is read-only except for marking items complete in the first `## Execution Checklist` section and updating frontmatter `status` (`pending` / `in_progress` / `completed`). Do not edit architecture, task descriptions, verification design, or any other plan content.
 
 ---
 
@@ -245,10 +253,10 @@ Dispatch all subagents with the `Task` tool. Resolve tier aliases from the `/se-
 | Red flag | What you were about to do | Correction |
 |---|---|---|
 | "I'll run the build/tests here to save a hop." | Execute any build, lint, test, or git command inline in the controller. | Delegate to a runner subagent dispatched with `Task` (cheap / script-runner tier). The controller dispatches, waits, and reads a summary. Nothing heavy runs inline. |
-| "I'll ask the toggles again later — I forgot to record them." | Re-present the session toggles after the session has started, or ask them one at a time. | Present both toggles together using `AskUserQuestion`, once, at step 4. Record the answers. They are immutable. |
+| "I'll ask the toggles again later — I forgot to record them." | Re-present the session toggles after the session has started, or ask them one at a time. | Resolve both settings from `/se-get-config` at step 4 (`true`/`false` use directly; `"ask"` prompts). Settings may already be fixed by config — skip the prompt for any non-`"ask"` value — but still never re-ask mid-session. Ask only the `"ask"` settings, once, in a single `AskUserQuestion` when needed. Record the resolved values. They are immutable. |
 | "These two tasks are quick — I'll run them in parallel." | Parallelize tasks that share at least one file. | Parallel dispatch via `Task` is valid **only** for tasks with completely disjoint file sets. A single shared file makes the pair sequential. |
 | "The implementer can hand-roll the API call — it's simpler." | Let the implementer bypass the plan's bound repo skill and write the logic from scratch. | The implementer MUST invoke the bound repo skill first, every time, before writing any hand-rolled logic. |
-| "I'll tweak the plan to fit what I actually built." | Edit plan.md or any plan file to match the implementation after the fact. | The plan is read-only during execution except `## Execution Checklist` checkbox updates and frontmatter `status`. If the implementation diverges from the plan, surface the divergence to the user — do not silently update the plan. |
+| "I'll tweak the plan to fit what I actually built." | Edit the plan or any plan file to match the implementation after the fact. | The plan is read-only during execution except `## Execution Checklist` checkbox updates and frontmatter `status`. If the implementation diverges from the plan, surface the divergence to the user — do not silently update the plan. |
 | "The code can't quite meet the spec — I'll just relax the spec." | Rewrite the committed spec to match whatever the code happened to do. | A divergence is a **bug by default** — fix the code (the spec is authoritative). The spec is amended ONLY for a genuine implementation limitation with no workaround, and ONLY via step 6e: use `AskUserQuestion` to ask the user when Auto-PR is OFF; amend to the closest achievable + a limitation note when Auto-PR is ON. Never rewrite the spec to paper over an ordinary bug. |
 | "Auto-PR is OFF but I'll just open the PR — it's clean." | Skip the final review / the "Create a draft PR?" question and open the PR anyway when Auto-PR is OFF. | Auto-PR OFF means a human is in the loop: write `gate-open`, present the work, WAIT, then use `AskUserQuestion` to ask whether to create a draft PR. "No" ends the session with no PR (clear `gate-open` + `active`). Only Auto-PR ON opens the PR without asking. |
 | "I'll add a couple of extra tests / a helper utility while I'm here." | Add unrequested tests, helpers, documentation, or any code not specified in the plan. | YAGNI. Only what the plan specifies. Extra additions go into a follow-up task or a new plan — not this session. |

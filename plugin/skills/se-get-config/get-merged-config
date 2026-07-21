@@ -1,0 +1,122 @@
+#!/usr/bin/env node
+/**
+ * se-get-config/get-merged-config
+ *
+ * Lenient per-key merge of se-config tiers → effective JSON on stdout.
+ * Never prints diagnostics. Every key always resolves.
+ *
+ * Repo resolution mirrors branch-context:
+ *   CLAUDE_PROJECT_DIR → CURSOR_PROJECT_DIR → process.cwd()
+ *   then git rev-parse --show-toplevel when available.
+ *
+ * Tiers (highest first):
+ *   local  — <repo>/.super-exec/se-config.local.json
+ *   user   — ~/.super-exec/se-config.json
+ *   default — se-config.default.json beside this script (__dirname)
+ */
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { execFileSync } = require('child_process');
+
+const CONFIG_KEYS = [
+  'commitSpec',
+  'commitPlan',
+  'humanReviewBeforeCheckpointCommit',
+  'autoCreatePr',
+];
+
+/** Absolute last-resort defaults (match se-config.default.json / schema). */
+const EMBEDDED_DEFAULTS = {
+  commitSpec: 'ask',
+  commitPlan: false,
+  humanReviewBeforeCheckpointCommit: 'ask',
+  autoCreatePr: 'ask',
+};
+
+function isAllowed(value) {
+  return value === true || value === false || value === 'ask';
+}
+
+function startDir() {
+  return (
+    process.env.CLAUDE_PROJECT_DIR ||
+    process.env.CURSOR_PROJECT_DIR ||
+    process.cwd()
+  );
+}
+
+function resolveRepoRoot(dir) {
+  try {
+    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: dir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 5000,
+    }).trim();
+    return root || dir;
+  } catch (_) {
+    return dir;
+  }
+}
+
+/**
+ * Read a tier file. Returns a plain object of valid config keys only,
+ * or null if the file is missing or the entire JSON is malformed.
+ */
+function readTier(filePath) {
+  let raw;
+  try {
+    raw = fs.readFileSync(filePath, 'utf8');
+  } catch (_) {
+    return null;
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return null;
+  }
+  const out = {};
+  for (const key of CONFIG_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(parsed, key)) continue;
+    if (isAllowed(parsed[key])) {
+      out[key] = parsed[key];
+    }
+    // invalid value → treat key as absent (sibling keys still apply)
+  }
+  return out;
+}
+
+function mergeEffective(tiers) {
+  const effective = {};
+  for (const key of CONFIG_KEYS) {
+    let resolved;
+    for (const tier of tiers) {
+      if (tier && Object.prototype.hasOwnProperty.call(tier, key)) {
+        resolved = tier[key];
+        break;
+      }
+    }
+    effective[key] = resolved !== undefined ? resolved : EMBEDDED_DEFAULTS[key];
+  }
+  return effective;
+}
+
+const repoRoot = resolveRepoRoot(startDir());
+const localPath = path.join(repoRoot, '.super-exec', 'se-config.local.json');
+const userPath = path.join(os.homedir(), '.super-exec', 'se-config.json');
+const defaultPath = path.join(__dirname, 'se-config.default.json');
+
+const local = readTier(localPath);
+const user = readTier(userPath);
+const defaults = readTier(defaultPath);
+
+const effective = mergeEffective([local, user, defaults]);
+process.stdout.write(JSON.stringify(effective));

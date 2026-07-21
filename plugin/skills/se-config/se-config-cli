@@ -1,0 +1,799 @@
+#!/usr/bin/env node
+/**
+ * se-config/se-config-cli
+ *
+ * Human read/write surface for se-config tiers.
+ * Subcommands: print | set | migrate
+ *
+ * Does NOT merge tiers and does NOT call se-get-config / get-merged-config.
+ * Effective (merged) is obtained at the SKILL/agent level via /se-get-config.
+ *
+ * Repo resolution mirrors get-merged-config / branch-context:
+ *   CLAUDE_PROJECT_DIR → CURSOR_PROJECT_DIR → process.cwd()
+ *   then git rev-parse --show-toplevel when available.
+ *
+ * Tiers:
+ *   local  — <repo>/.super-exec/se-config.local.json
+ *   user   — ~/.super-exec/se-config.json
+ *   default — NEVER writable; never shown as its own block
+ *
+ * migrate:
+ *   Structural v0→v1 relocation. Root-preserving (never docs↔.super-exec).
+ *   Default = dry-run preview. --apply executes moves + pointer rewrites.
+ */
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { execFileSync } = require('child_process');
+
+const SCHEMA_URL =
+  'https://raw.githubusercontent.com/mek-earnin/super-exec/main/plugin/skills/se-config/se-config.schema.json';
+
+/** Hand-rolled key/enum table (duplicated from schema; no cross-skill require). */
+const CONFIG_KEYS = [
+  'commitSpec',
+  'commitPlan',
+  'humanReviewBeforeCheckpointCommit',
+  'autoCreatePr',
+];
+
+/** Exactly four digits + hyphen (v0 running number). */
+const NUMBERED_PREFIX_RE = /^(\d{4})-(.+)$/;
+const PLAN_DIR_RE = /^(\d{4}-\d{2}-\d{2})-(.+)$/;
+const SPEC_FILE_RE = /^(\d{4})-(.+)\.md$/;
+const ADR_FILE_RE = /^(\d{4})-(.+)\.md$/;
+
+function isAllowed(value) {
+  return value === true || value === false || value === 'ask';
+}
+
+function usage() {
+  return [
+    'Usage:',
+    '  se-config-cli print',
+    '  se-config-cli set <local|user> <key> <value>',
+    '  se-config-cli migrate [--apply]',
+    '',
+    'Keys: ' + CONFIG_KEYS.join(', '),
+    'Values: true | false | ask',
+    '',
+    'migrate: dry-run preview by default; --apply executes moves + pointer rewrites.',
+  ].join('\n');
+}
+
+function startDir() {
+  return (
+    process.env.CLAUDE_PROJECT_DIR ||
+    process.env.CURSOR_PROJECT_DIR ||
+    process.cwd()
+  );
+}
+
+function resolveRepoRoot(dir) {
+  try {
+    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: dir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 5000,
+    }).trim();
+    return root || dir;
+  } catch (_) {
+    return dir;
+  }
+}
+
+function tierPaths() {
+  const repoRoot = resolveRepoRoot(startDir());
+  return {
+    local: path.join(repoRoot, '.super-exec', 'se-config.local.json'),
+    user: path.join(os.homedir(), '.super-exec', 'se-config.json'),
+  };
+}
+
+/**
+ * Inspect a tier file for print diagnostics.
+ * Returns { exists, malformed, parsed, invalidKeys: [{key, value}] }
+ * exists=false when file is missing.
+ */
+function inspectTier(filePath) {
+  let raw;
+  try {
+    raw = fs.readFileSync(filePath, 'utf8');
+  } catch (_) {
+    return { exists: false };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      exists: true,
+      malformed: true,
+      raw,
+      parseError: err && err.message ? err.message : String(err),
+    };
+  }
+
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      exists: true,
+      malformed: true,
+      raw,
+      parseError: 'JSON root must be an object',
+    };
+  }
+
+  const invalidKeys = [];
+  for (const key of CONFIG_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(parsed, key)) continue;
+    if (!isAllowed(parsed[key])) {
+      invalidKeys.push({ key, value: parsed[key] });
+    }
+  }
+
+  return {
+    exists: true,
+    malformed: false,
+    parsed,
+    raw,
+    invalidKeys,
+  };
+}
+
+function formatJsonValue(value) {
+  return JSON.stringify(value, null, 2);
+}
+
+function renderTier(name, filePath, info) {
+  const lines = [];
+  lines.push(`=== ${name} ===`);
+  lines.push(`path: ${filePath}`);
+
+  if (info.malformed) {
+    lines.push('status: MALFORMED (invalid JSON) — entire tier ignored by merge');
+    lines.push('diagnostic: ' + info.parseError);
+    if (info.raw != null && String(info.raw).trim() !== '') {
+      lines.push('raw:');
+      lines.push(String(info.raw).replace(/\s+$/, ''));
+    }
+    return lines.join('\n');
+  }
+
+  lines.push(formatJsonValue(info.parsed));
+  if (info.invalidKeys && info.invalidKeys.length) {
+    for (const { key, value } of info.invalidKeys) {
+      lines.push(
+        `diagnostic: invalid value for "${key}": ${JSON.stringify(value)} ` +
+          '(allowed: true | false | "ask") — this key is ignored by merge'
+      );
+    }
+  }
+  return lines.join('\n');
+}
+
+function cmdPrint() {
+  const paths = tierPaths();
+  const blocks = [];
+
+  for (const name of ['local', 'user']) {
+    const filePath = paths[name];
+    const info = inspectTier(filePath);
+    if (!info.exists) continue;
+    blocks.push(renderTier(name, filePath, info));
+  }
+
+  if (blocks.length === 0) {
+    process.stdout.write(
+      'No local or user se-config file found.\n' +
+        `(looked for local: ${paths.local})\n` +
+        `(looked for user: ${paths.user})\n`
+    );
+    return;
+  }
+
+  process.stdout.write(blocks.join('\n\n') + '\n');
+}
+
+/**
+ * Parse argv token into a schema value.
+ * Accepts only the strings "true", "false", "ask".
+ */
+function parseSetValue(token) {
+  if (token === 'true') return { ok: true, value: true };
+  if (token === 'false') return { ok: true, value: false };
+  if (token === 'ask') return { ok: true, value: 'ask' };
+  return { ok: false };
+}
+
+function cmdSet(argv) {
+  const target = argv[0];
+  const key = argv[1];
+  const valueToken = argv[2];
+
+  if (!target || !key || valueToken === undefined) {
+    process.stderr.write('Error: set requires <local|user> <key> <value>\n\n' + usage() + '\n');
+    process.exit(1);
+  }
+
+  if (target === 'default') {
+    process.stderr.write(
+      'Error: target "default" is not writable (embedded plugin defaults only)\n'
+    );
+    process.exit(1);
+  }
+
+  if (target !== 'local' && target !== 'user') {
+    process.stderr.write(
+      'Error: target must be "local" or "user" (got ' + JSON.stringify(target) + ')\n'
+    );
+    process.exit(1);
+  }
+
+  if (CONFIG_KEYS.indexOf(key) === -1) {
+    process.stderr.write(
+      'Error: invalid key ' +
+        JSON.stringify(key) +
+        '. Allowed keys: ' +
+        CONFIG_KEYS.join(', ') +
+        '\n'
+    );
+    process.exit(1);
+  }
+
+  const parsedValue = parseSetValue(valueToken);
+  if (!parsedValue.ok) {
+    process.stderr.write(
+      'Error: invalid value ' +
+        JSON.stringify(valueToken) +
+        '. Allowed values: true | false | ask\n'
+    );
+    process.exit(1);
+  }
+
+  const paths = tierPaths();
+  const filePath = paths[target];
+  const dir = path.dirname(filePath);
+
+  let obj = {};
+  let existed = false;
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    existed = true;
+    const parsed = JSON.parse(raw);
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      obj = parsed;
+    } else {
+      process.stderr.write(
+        'Error: existing tier file is not a JSON object: ' + filePath + '\n'
+      );
+      process.exit(1);
+    }
+  } catch (err) {
+    if (existed) {
+      // File exists but is malformed — refuse to clobber silently
+      process.stderr.write(
+        'Error: existing tier file is malformed JSON; fix or remove it first: ' +
+          filePath +
+          '\n'
+      );
+      process.exit(1);
+    }
+    // missing file → create fresh
+    obj = {};
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(obj, '$schema')) {
+    obj.$schema = SCHEMA_URL;
+  }
+  obj[key] = parsedValue.value;
+
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(obj, null, 2) + '\n', 'utf8');
+  process.stdout.write('Wrote ' + key + '=' + JSON.stringify(parsedValue.value) + ' to ' + filePath + '\n');
+}
+
+// ---------------------------------------------------------------------------
+// migrate — v0 → v1 structural relocation (root-preserving)
+// ---------------------------------------------------------------------------
+
+function toPosix(p) {
+  return p.split(path.sep).join('/');
+}
+
+function relPosix(repoRoot, absPath) {
+  return toPosix(path.relative(repoRoot, absPath));
+}
+
+function safeReaddir(dir) {
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true });
+  } catch (_) {
+    return [];
+  }
+}
+
+function pathExists(p) {
+  try {
+    fs.accessSync(p);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function isGitTracked(repoRoot, relPath) {
+  try {
+    const out = execFileSync('git', ['ls-files', '--', relPath], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 5000,
+    }).trim();
+    return out.length > 0;
+  } catch (_) {
+    return false;
+  }
+}
+
+function gitMv(repoRoot, fromRel, toRel) {
+  execFileSync('git', ['mv', '--', fromRel, toRel], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 10000,
+  });
+}
+
+function plainMv(fromAbs, toAbs) {
+  fs.renameSync(fromAbs, toAbs);
+}
+
+function ensureParentDir(absPath) {
+  fs.mkdirSync(path.dirname(absPath), { recursive: true });
+}
+
+/** Remove empty ancestor dirs up to (but not including) stopDir. */
+function cleanupEmptyParents(startDir, stopDir) {
+  let cur = startDir;
+  const stop = path.resolve(stopDir);
+  while (cur && path.resolve(cur) !== stop) {
+    let entries;
+    try {
+      entries = fs.readdirSync(cur);
+    } catch (_) {
+      break;
+    }
+    if (entries.length > 0) break;
+    try {
+      fs.rmdirSync(cur);
+    } catch (_) {
+      break;
+    }
+    const parent = path.dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+}
+
+/**
+ * Detect v0 artifacts and build move + pointer-rewrite plans.
+ * Returns { moves, pointerRewrites } where paths are repo-relative POSIX.
+ */
+function detectMigration(repoRoot) {
+  const moves = [];
+  const seenFrom = new Set();
+
+  function addMove(fromRel, toRel, kind) {
+    if (seenFrom.has(fromRel)) return;
+    if (fromRel === toRel) return;
+    const fromAbs = path.join(repoRoot, fromRel);
+    const toAbs = path.join(repoRoot, toRel);
+    // Idempotent: source gone and dest already there → skip
+    if (!pathExists(fromAbs)) return;
+    if (pathExists(toAbs)) return;
+    seenFrom.add(fromRel);
+    moves.push({ from: fromRel, to: toRel, kind });
+  }
+
+  // --- Specs: docs/specs/[<app>/]NNNN-<slug>.md (FILE) ---
+  const specsRoot = path.join(repoRoot, 'docs', 'specs');
+  for (const ent of safeReaddir(specsRoot)) {
+    if (ent.isFile()) {
+      const m = ent.name.match(SPEC_FILE_RE);
+      if (!m) continue;
+      const slug = m[2];
+      const fromRel = toPosix(path.join('docs', 'specs', ent.name));
+      const toRel = toPosix(path.join('docs', 'specs', slug, 'spec-' + slug + '.md'));
+      addMove(fromRel, toRel, 'spec');
+      continue;
+    }
+    if (!ent.isDirectory()) continue;
+    // Directory under docs/specs/: either monorepo <app> or already-v1 feature.
+    // Only migrate numbered FILE children (v0 monorepo); skip folders (v1).
+    const app = ent.name;
+    const appDir = path.join(specsRoot, app);
+    for (const child of safeReaddir(appDir)) {
+      if (!child.isFile()) continue;
+      const m = child.name.match(SPEC_FILE_RE);
+      if (!m) continue;
+      const slug = m[2];
+      const fromRel = toPosix(path.join('docs', 'specs', app, child.name));
+      const toRel = toPosix(
+        path.join('docs', 'specs', app, slug, 'spec-' + slug + '.md')
+      );
+      addMove(fromRel, toRel, 'spec');
+    }
+  }
+
+  // --- Global ADRs: docs/adr/NNNN-<slug>.md ---
+  const adrRoot = path.join(repoRoot, 'docs', 'adr');
+  for (const ent of safeReaddir(adrRoot)) {
+    if (!ent.isFile()) continue;
+    const m = ent.name.match(ADR_FILE_RE);
+    if (!m) continue;
+    const slug = m[2];
+    const fromRel = toPosix(path.join('docs', 'adr', ent.name));
+    const toRel = toPosix(path.join('docs', 'adr', slug + '.md'));
+    addMove(fromRel, toRel, 'adr');
+  }
+
+  // --- Plans + handoffs under .super-exec/ (NOT under .super-exec/specs/) ---
+  const seRoot = path.join(repoRoot, '.super-exec');
+  const SKIP_SE_DIRS = new Set(['specs']);
+
+  function scanFeatureDir(featureDirAbs, featureName, appSegment) {
+    const fm = featureName.match(NUMBERED_PREFIX_RE);
+    if (!fm) return;
+    const feature = fm[2];
+
+    for (const planEnt of safeReaddir(featureDirAbs)) {
+      if (!planEnt.isDirectory()) continue;
+      const pm = planEnt.name.match(PLAN_DIR_RE);
+      if (!pm) continue;
+      const planName = pm[2];
+      const planDirAbs = path.join(featureDirAbs, planEnt.name);
+      const planMd = path.join(planDirAbs, 'plan.md');
+      const handoffMd = path.join(planDirAbs, 'handoff.md');
+
+      const destParts = ['specs'];
+      if (appSegment) destParts.push(appSegment);
+      destParts.push(feature, 'plans', planEnt.name);
+      const destDirRel = toPosix(path.join('.super-exec', ...destParts));
+
+      if (pathExists(planMd)) {
+        const fromRel = relPosix(repoRoot, planMd);
+        const toRel = toPosix(path.join(destDirRel, 'plan-' + planName + '.md'));
+        addMove(fromRel, toRel, 'plan');
+      }
+      if (pathExists(handoffMd)) {
+        const fromRel = relPosix(repoRoot, handoffMd);
+        const toRel = toPosix(path.join(destDirRel, 'handoff-' + planName + '.md'));
+        addMove(fromRel, toRel, 'handoff');
+      }
+    }
+  }
+
+  for (const ent of safeReaddir(seRoot)) {
+    if (!ent.isDirectory()) continue;
+    if (SKIP_SE_DIRS.has(ent.name)) continue;
+
+    const abs = path.join(seRoot, ent.name);
+    if (NUMBERED_PREFIX_RE.test(ent.name)) {
+      // .super-exec/NNNN-<feature>/...
+      scanFeatureDir(abs, ent.name, null);
+      continue;
+    }
+
+    // Possible monorepo <app> segment: .super-exec/<app>/NNNN-<feature>/...
+    for (const child of safeReaddir(abs)) {
+      if (!child.isDirectory()) continue;
+      if (!NUMBERED_PREFIX_RE.test(child.name)) continue;
+      scanFeatureDir(path.join(abs, child.name), child.name, ent.name);
+    }
+  }
+
+  // Build concrete rewrite list: dest file → substitutions
+  const fileRewrites = []; // { file, substitutions: [{from,to,label}] }
+
+  function ensureFileRewrite(fileRel) {
+    let entry = fileRewrites.find((e) => e.file === fileRel);
+    if (!entry) {
+      entry = { file: fileRel, substitutions: [] };
+      fileRewrites.push(entry);
+    }
+    return entry;
+  }
+
+  const specMap = {};
+  const planMap = {};
+  for (const mv of moves) {
+    if (mv.kind === 'spec') specMap[mv.from] = mv.to;
+    if (mv.kind === 'plan') planMap[mv.from] = mv.to;
+  }
+
+  for (const mv of moves) {
+    if (mv.kind === 'plan') {
+      const entry = ensureFileRewrite(mv.to);
+      for (const [oldSpec, newSpec] of Object.entries(specMap)) {
+        entry.substitutions.push({
+          from: oldSpec,
+          to: newSpec,
+          label: 'Spec:',
+        });
+      }
+    }
+    if (mv.kind === 'handoff') {
+      const entry = ensureFileRewrite(mv.to);
+      for (const [oldPlan, newPlan] of Object.entries(planMap)) {
+        entry.substitutions.push({
+          from: oldPlan,
+          to: newPlan,
+          label: 'Plan:',
+        });
+      }
+    }
+  }
+
+  // .super-exec/active spec: + active_plan:
+  const activeRel = toPosix(path.join('.super-exec', 'active'));
+  const activeAbs = path.join(repoRoot, activeRel);
+  if (pathExists(activeAbs)) {
+    let raw = '';
+    try {
+      raw = fs.readFileSync(activeAbs, 'utf8');
+    } catch (_) {
+      raw = '';
+    }
+    const specMatch = raw.match(/^spec:\s*(.+)\s*$/m);
+    if (specMatch) {
+      const current = specMatch[1].trim();
+      const mapped = specMap[current];
+      if (mapped) {
+        const entry = ensureFileRewrite(activeRel);
+        entry.substitutions.push({
+          from: current,
+          to: mapped,
+          label: 'spec:',
+        });
+      }
+    }
+    const m = raw.match(/^active_plan:\s*(.+)\s*$/m);
+    if (m) {
+      const current = m[1].trim();
+      const mapped = planMap[current];
+      if (mapped) {
+        const entry = ensureFileRewrite(activeRel);
+        entry.substitutions.push({
+          from: current,
+          to: mapped,
+          label: 'active_plan:',
+        });
+      }
+    }
+  }
+
+  return {
+    moves,
+    fileRewrites: fileRewrites.filter((e) => e.substitutions.length > 0),
+  };
+}
+
+function applyContentRewrites(repoRoot, fileRewrites, dryRun) {
+  const results = [];
+  for (const entry of fileRewrites) {
+    const abs = path.join(repoRoot, entry.file);
+    if (!pathExists(abs)) {
+      // For dry-run, plan/handoff still at old path — rewrite preview uses
+      // destination path; content check uses source if dest missing.
+      continue;
+    }
+    let content = fs.readFileSync(abs, 'utf8');
+    let changed = false;
+    const applied = [];
+    for (const sub of entry.substitutions) {
+      if (content.indexOf(sub.from) === -1) continue;
+      // Prefer label-aware replace when label is Spec:/Plan:/spec:/active_plan:
+      if (sub.label === 'active_plan:' || sub.label === 'spec:') {
+        const re =
+          sub.label === 'spec:'
+            ? /^(spec:\s*)(.+)\s*$/m
+            : /^(active_plan:\s*)(.+)\s*$/m;
+        const next = content.replace(re, (full, prefix, val) => {
+          if (val.trim() === sub.from) {
+            changed = true;
+            return prefix + sub.to;
+          }
+          return full;
+        });
+        content = next;
+        applied.push(sub);
+      } else if (sub.label === 'Spec:' || sub.label === 'Plan:') {
+        // Replace all occurrences of the old path (covers Spec:/Plan: lines
+        // and inline backtick refs).
+        if (content.indexOf(sub.from) !== -1) {
+          content = content.split(sub.from).join(sub.to);
+          changed = true;
+          applied.push(sub);
+        }
+      } else {
+        content = content.split(sub.from).join(sub.to);
+        changed = true;
+        applied.push(sub);
+      }
+    }
+    if (changed && !dryRun) {
+      fs.writeFileSync(abs, content, 'utf8');
+    }
+    if (changed || applied.length) {
+      results.push({ file: entry.file, substitutions: applied, written: changed && !dryRun });
+    }
+  }
+  return results;
+}
+
+/**
+ * For dry-run pointer preview: also peek at SOURCE files (pre-move) so we can
+ * report which Spec:/Plan: lines would be rewritten after the move.
+ */
+function previewPointerRewrites(repoRoot, moves, fileRewrites) {
+  const destToSource = {};
+  for (const mv of moves) {
+    destToSource[mv.to] = mv.from;
+  }
+
+  const lines = [];
+  for (const entry of fileRewrites) {
+    const sourceRel = destToSource[entry.file] || entry.file;
+    const abs = path.join(repoRoot, sourceRel);
+    if (!pathExists(abs)) continue;
+    let content = fs.readFileSync(abs, 'utf8');
+    for (const sub of entry.substitutions) {
+      if (content.indexOf(sub.from) === -1) continue;
+      lines.push({
+        file: entry.file,
+        label: sub.label,
+        from: sub.from,
+        to: sub.to,
+      });
+    }
+  }
+  return lines;
+}
+
+function cmdMigrate(argv) {
+  const apply = argv.indexOf('--apply') !== -1;
+  // Reject unknown flags
+  for (const a of argv) {
+    if (a === '--apply') continue;
+    if (a.startsWith('-')) {
+      process.stderr.write('Error: unknown migrate flag ' + JSON.stringify(a) + '\n\n' + usage() + '\n');
+      process.exit(1);
+    }
+  }
+
+  const repoRoot = resolveRepoRoot(startDir());
+  const { moves, fileRewrites } = detectMigration(repoRoot);
+
+  const mode = apply ? 'APPLY' : 'DRY-RUN';
+  const out = [];
+  out.push('=== se-config migrate (' + mode + ') ===');
+  out.push('repo: ' + repoRoot);
+  out.push('');
+
+  if (moves.length === 0 && fileRewrites.length === 0) {
+    out.push('No v0 artifacts found. Nothing to migrate (idempotent no-op).');
+    process.stdout.write(out.join('\n') + '\n');
+    return;
+  }
+
+  out.push('Planned moves (' + moves.length + '):');
+  if (moves.length === 0) {
+    out.push('  (none)');
+  } else {
+    for (const mv of moves) {
+      const tracked = isGitTracked(repoRoot, mv.from);
+      const via = tracked ? 'git mv' : 'mv';
+      out.push('  [' + mv.kind + '] ' + mv.from);
+      out.push('       -> ' + mv.to + '  (' + via + ')');
+    }
+  }
+
+  out.push('');
+  const previewPtrs = previewPointerRewrites(repoRoot, moves, fileRewrites);
+  out.push('Planned pointer rewrites (' + previewPtrs.length + '):');
+  if (previewPtrs.length === 0) {
+    out.push('  (none)');
+  } else {
+    for (const p of previewPtrs) {
+      out.push('  [' + p.label + '] in ' + p.file);
+      out.push('       ' + p.from + ' -> ' + p.to);
+    }
+  }
+
+  if (!apply) {
+    out.push('');
+    out.push('Dry-run only — no changes written.');
+    out.push('Re-run with --apply to execute moves + pointer rewrites.');
+    process.stdout.write(out.join('\n') + '\n');
+    return;
+  }
+
+  // --- APPLY ---
+  out.push('');
+  out.push('Executing...');
+
+  for (const mv of moves) {
+    const fromAbs = path.join(repoRoot, mv.from);
+    const toAbs = path.join(repoRoot, mv.to);
+    if (!pathExists(fromAbs)) {
+      out.push('  skip (missing): ' + mv.from);
+      continue;
+    }
+    if (pathExists(toAbs)) {
+      out.push('  skip (dest exists): ' + mv.to);
+      continue;
+    }
+    ensureParentDir(toAbs);
+    const tracked = isGitTracked(repoRoot, mv.from);
+    try {
+      if (tracked) {
+        gitMv(repoRoot, mv.from, mv.to);
+        out.push('  git mv: ' + mv.from + ' -> ' + mv.to);
+      } else {
+        plainMv(fromAbs, toAbs);
+        out.push('  mv:     ' + mv.from + ' -> ' + mv.to);
+      }
+      cleanupEmptyParents(path.dirname(fromAbs), repoRoot);
+    } catch (err) {
+      process.stderr.write(
+        'Error moving ' + mv.from + ' -> ' + mv.to + ': ' + (err && err.message ? err.message : String(err)) + '\n'
+      );
+      process.stdout.write(out.join('\n') + '\n');
+      process.exit(1);
+    }
+  }
+
+  // Rewrite pointers in destination files + active
+  const rewriteResults = applyContentRewrites(repoRoot, fileRewrites, false);
+  for (const r of rewriteResults) {
+    for (const sub of r.substitutions) {
+      out.push('  rewrite [' + sub.label + '] in ' + r.file + ': ' + sub.from + ' -> ' + sub.to);
+    }
+  }
+
+  out.push('');
+  out.push('Migration apply complete.');
+  process.stdout.write(out.join('\n') + '\n');
+}
+
+function main() {
+  const argv = process.argv.slice(2);
+  const cmd = argv[0] || 'print';
+
+  if (cmd === 'print') {
+    cmdPrint();
+    return;
+  }
+
+  if (cmd === 'set') {
+    cmdSet(argv.slice(1));
+    return;
+  }
+
+  if (cmd === 'migrate') {
+    cmdMigrate(argv.slice(1));
+    return;
+  }
+
+  process.stderr.write(
+    'Error: unknown subcommand ' + JSON.stringify(cmd) + '\n\n' + usage() + '\n'
+  );
+  process.exit(1);
+}
+
+main();

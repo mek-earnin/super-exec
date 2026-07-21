@@ -1,8 +1,10 @@
 # ADR Format
 
-ADRs live in `docs/adr/` and use sequential numbering: `0001-slug.md`, `0002-slug.md`, etc.
+ADRs are slug-only (no running number), named per `/se-slug-naming`, and routed by scope:
+- **Global / cross-cutting** → `docs/adr/<slug>.md`
+- **Feature-specific** → `<root>/[<app>/]<feature>/adr/<slug>.md` (inherits the spec's root; `<root>` ∈ {`docs/specs/`, `.super-exec/specs/`})
 
-Create the `docs/adr/` directory lazily — only when the first ADR is needed.
+Create the target directory lazily — only when the first ADR at that scope is needed.
 
 ## Template
 
@@ -18,13 +20,13 @@ That's it. An ADR can be a single paragraph. The value is in recording *that* a 
 
 Only include these when they add genuine value. Most ADRs won't need them.
 
-- **Status** frontmatter (`proposed | accepted | deprecated | superseded by ADR-NNNN`) — useful when decisions are revisited
+- **Status** frontmatter (`proposed | accepted | deprecated | superseded by <slug>`) — useful when decisions are revisited
 - **Considered Options** — only when the rejected alternatives are worth remembering
 - **Consequences** — only when non-obvious downstream effects need to be called out
 
-## Numbering
+## Naming
 
-Scan `docs/adr/` for the highest existing number and increment by one.
+ADR slug is named per `/se-slug-naming` (caveman-compressed, `[a-z0-9-]` only). Slug-only identity — no running number. Route by scope at write time (global vs feature-specific) as above.
 
 ## When to offer an ADR
 

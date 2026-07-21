@@ -32,7 +32,7 @@ Complete every item in order. Never skip or reorder. Do not advance past a step 
 
 Dispatch a fresh reviewer subagent (strong / reviewer tier) with the `Task` tool. See the `/se-subagent` skill for prose tier aliases and dispatch guidance. Provide the reviewer:
 
-- AGREED architecture from the plan — the Architecture + Data Flow sections of `plan.md` plus any risk-grilling decisions recorded there.
+- AGREED architecture from the plan — the Architecture + Data Flow sections of the plan file (`plan-<plan-name>.md`) plus any risk-grilling decisions recorded there.
 - The committed implementation diff, or the relevant modified files.
 - A single question: **does the implementation's shape match the agreed architecture?** The reviewer must render an explicit CONFORMS or DEVIATES verdict.
 

@@ -5,7 +5,7 @@ description: Use whenever a PR is to be created, updated, corrected, or fixing a
 
 # se-pr
 
-/se-exec invokes se-pr **whenever a PR is to be created, updated, or corrected** — because *Auto-PR* was ON (no review), because the user answered **"Yes"** to "Create a draft PR?" at /se-exec's final-review gate, or because an already-open PR needs refreshing/fixing. **The final human-review gate lives in /se-exec, not here.** By the time se-pr runs, the decision is made and any review gate resolved and cleared — se-pr owns **PR creation and updates/corrections**. On completion, clearing `.super-exec/active` inerts all guards for the session.
+/se-exec invokes se-pr **whenever a PR is to be created, updated, or corrected** — because *Auto-PR* was ON (no review; that toggle is config-resolved from `autoCreatePr` via `/se-get-config` at /se-exec start), because the user answered **"Yes"** to "Create a draft PR?" at /se-exec's final-review gate, or because an already-open PR needs refreshing/fixing. **The final human-review gate lives in /se-exec, not here.** By the time se-pr runs, the decision is made and any review gate resolved and cleared — se-pr owns **PR creation and updates/corrections**. On completion, clearing `.super-exec/active` inerts all guards for the session.
 
 All git and `gh` execution runs in a runner subagent — never inline in the controller. Raw `git`/`gh` calls in the controller trip the workflow nudge; the runner is the only safe execution context.
 
@@ -51,7 +51,7 @@ If the feature has any frontend, component, or style changes and screenshots wer
 
 ## 5. PATH B — Create the draft PR
 
-The decision to open the PR was already made upstream (Auto-PR ON, or the human's "Yes" at /se-exec's final review) — do **not** present the body and wait for a second approval. Dispatch a **runner subagent** (cheap / script-runner tier — see the `/se-subagent` skill) using the `Task` tool: pass it the title, body, and the `--draft` flag. The runner executes `gh pr create` in draft mode; the controller never runs `gh` inline. If creation fails, surface the exact failure and ask whether to retry or repair PR creation; do not restart plan execution or mark the completed plan incomplete.
+The decision to open the PR was already made upstream (Auto-PR ON from config-resolved `autoCreatePr`, or the human's "Yes" at /se-exec's final review) — do **not** present the body and wait for a second approval. Dispatch a **runner subagent** (cheap / script-runner tier — see the `/se-subagent` skill) using the `Task` tool: pass it the title, body, and the `--draft` flag. The runner executes `gh pr create` in draft mode; the controller never runs `gh` inline. If creation fails, surface the exact failure and ask whether to retry or repair PR creation; do not restart plan execution or mark the completed plan incomplete.
 
 ## 6. Confirm PR creation
 
@@ -70,7 +70,7 @@ When you catch yourself about to do any of the following, STOP and apply the cor
 | Red flag | What you were about to do | Correction |
 |---|---|---|
 | "I'll add a 'Testing' section the template doesn't have" | Add a primary `##` section not present in `pull_request_template.md` | Count the template's primary sections. Mirror 1:1 — same headings, count, order. No extra primary sections. Sub-sections within an existing section are allowed. |
-| "I'll present the draft and wait for another approval" | Block Path-B PR creation to ask the human to approve the body again | The decision to open the PR was already made upstream — Auto-PR ON, or the human's "Yes" at /se-exec's final review. Path B creates the draft **directly** (draft mode is safe and editable). Do not add a second approval wait. (A repo `create-pr` skill that prompts on its own is Path A — follow it 100%.) |
+| "I'll present the draft and wait for another approval" | Block Path-B PR creation to ask the human to approve the body again | The decision to open the PR was already made upstream — Auto-PR ON (config-resolved `autoCreatePr`), or the human's "Yes" at /se-exec's final review. Path B creates the draft **directly** (draft mode is safe and editable). Do not add a second approval wait. (A repo `create-pr` skill that prompts on its own is Path A — follow it 100%.) |
 | "I'll write or clear `.super-exec/gate-open` myself" | Manage the gate-open marker inside se-pr | gate-open is owned by **/se-exec** (per-commit review + the final-review gate). se-pr never writes or clears it. se-pr's only marker action is clearing `.super-exec/active` at the very end. |
 | "I'll run `gh pr create` inline" | Execute `gh`, `git`, or any shell command directly in the controller | All git/gh execution runs in a runner subagent dispatched via the `Task` tool. Inline execution in the controller trips the workflow nudge. Dispatch a runner and wait for its evidence. |
 | "I'll reply to the bot comment now" | Post a response to an automated PR comment from the PR-creation flow | Never reply from se-pr. Route review comments through /se-pr-triage: approve the decision/Fix scope at Gate 1, finish and push any Fix, then present the exact final target/body and receive explicit Gate-2 approval before posting. |

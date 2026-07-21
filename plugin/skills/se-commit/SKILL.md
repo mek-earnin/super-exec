@@ -29,7 +29,7 @@ se-commit is the **gate, not the reviewer.** Files must already be **reviewed**;
 
 **No review evidence → STOP; hand the review back to the caller.** Unreviewed staged paths — a standalone `/se-commit`, an ad-hoc checkpoint commit (a `CLAUDE.md` "commit finished task"), a docs/spec commit outside a review loop, or any commit the caller can't tie to a case above — do not get committed. se-commit stops and instructs the **caller** (holds the intent) to:
 
-1. Spawn **one or two fresh reviewer subagents** (strong / reviewer tier — see `/se-subagent`) via `Task` over the **staged diff** — one for a small, low-risk diff, two for a larger or higher-risk one. Caller's job; se-commit can't do it. No `plan.md` needed — check the staged diff for correctness, consistency, security, and repo conventions.
+1. Spawn **one or two fresh reviewer subagents** (strong / reviewer tier — see `/se-subagent`) via `Task` over the **staged diff** — one for a small, low-risk diff, two for a larger or higher-risk one. Caller's job; se-commit can't do it. No plan file needed — check the staged diff for correctness, consistency, security, and repo conventions.
 2. Apply **`/se-review`'s severity model** with the realism filter: **Critical / Important BLOCK**, Minor is reported non-blocking. **Loop** fix → fresh reviewer until clean (each fix invalidates prior evidence).
 3. Re-invoke `/se-commit` with the now-reviewed paths.
 
@@ -43,7 +43,7 @@ se-commit is the **gate, not the reviewer.** Files must already be **reviewed**;
 
 A commit must contain **only the files the current change touched** — nothing else in the working tree. Matters most under parallel work: several implementer subagents editing disjoint files in one repo at once. Any add-all sweeps in every other agent's in-flight edits, breaking the one-commit-to-one-change mapping.
 
-1. **Caller passes an explicit file list** — the exact paths this one logical change touched. A commit always knows its own files (the implementer reports what it modified; the spec commit names the spec/ADR/`CONTEXT.md` paths).
+1. **Caller passes an explicit file list** — the exact paths this one logical change touched. A commit always knows its own files (the implementer reports what it modified; the spec commit names the v1 paths it touched — spec at `<root>/[<app>/]<feature>/spec-<feature>.md` where `<root>` ∈ {`docs/specs/`, `.super-exec/specs/`}, global ADR at `docs/adr/<slug>.md`, feature-specific ADR at `<root>/[<app>/]<feature>/adr/<slug>.md`, and any `CONTEXT.md`).
 2. **Stage only those paths**: `git add -- <path1> <path2> …`. Never `git add -A`, `git add .`, `git add :/`, or `git commit -a`.
 3. **No file list → do not commit.** STOP and get the paths; never fall back to the whole tree.
 4. **Verify isolation before committing.** Run `git status --short`; confirm the staged set (`A`/`M`/`D` left column) is exactly the intended paths — nothing more, nothing missing. Otherwise surface it to the caller and stop.

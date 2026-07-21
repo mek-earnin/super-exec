@@ -19,7 +19,7 @@ super-exec is built for teams that want agent speed without constant babysitting
 - Keeps heavy searches, builds, tests, and reviews out of the main session when possible.
 - Verifies with real evidence before claiming work is done.
 - Prefers the target repo's own skills and conventions for branches, commits, PRs, tests, and local dev.
-- Keeps local execution artifacts local, while specs remain shareable review artifacts.
+- Keeps execution artifacts local by default, with per-feature placement — spec and plan, team or local — configurable via `se-config`.
 
 ## Install
 
@@ -69,16 +69,38 @@ The workflow can open a draft PR when the build is ready. After a PR exists, `/s
 | `/se-plan` | Re-enter or revise planning for an existing spec. |
 | `/se-exec` | Build from a reviewed plan, verify the work, review it, and prepare the PR. |
 | `/se-pr-triage` | Handle review comments through separate fix and final-reply approvals, plus autonomous CI triage. |
+| `/se-config` | Inspect or set placement and behavior config (tiered), and migrate a v0 repo to the v1 layout. |
 
 Most users start with `/se-discuss`, then follow the prompts. You can also describe the work naturally and let the agent choose the matching entrypoint.
 
+## Configuration & migrating to v1
+
+Artifact placement and two workflow gates are controlled by a small tiered config, `se-config`. Four keys, each `true`, `false`, or `"ask"`:
+
+| Key | Controls |
+|---|---|
+| `commitSpec` | Spec root — committed `docs/specs/` (team) vs. local `.super-exec/specs/`. |
+| `commitPlan` | Same choice for plans. |
+| `humanReviewBeforeCheckpointCommit` | Human approval before each task's checkpoint commit. |
+| `autoCreatePr` | Auto-open a PR when the build is done. |
+
+Values merge over three tiers: repo-local `.super-exec/se-config.local.json` > user `~/.super-exec/se-config.json` > shipped defaults. Manage them with `/se-config print` (the effective config plus any local and user overrides) and `/se-config set <local|user> <key> <value>`.
+
+**v1 layout** is slug-only and per-feature (no running numbers):
+
+- Spec — `<root>/[<app>/]<feature>/spec-<feature>.md`
+- Plan — `<root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md`
+- Global ADRs stay in `docs/adr/<slug>.md`.
+
+**Upgrading a v0 repo** (numbered `docs/specs/NNNN-*.md`, `.super-exec/NNNN-*/…`): run `/se-config migrate` to preview the moves (dry-run, changes nothing), then `/se-config migrate --apply` to move the files (`git mv` for tracked files, `mv` for untracked), strip the running numbers, and rewrite the `Spec:` / `Plan:` cross-pointers and the active session marker.
+
 ## Artifacts
 
-The durable team-facing artifact is the spec in `docs/specs/`. Local plans, handoffs, and session state live under `.super-exec/` and are not meant to be committed.
+Specs and plans use a slug-only, per-feature layout, and their root is config-driven (`se-config`): committed under `docs/specs/` for the team, or kept local under `.super-exec/specs/` (gitignored). Handoffs follow the plan's root, while session state (the active marker and gate files) always stays under `.super-exec/`.
 
 Detailed workflow contracts and implementation-specific behavior live in the source-of-truth files:
 
-- `docs/specs/0001-core-workflow.md`
+- `docs/specs/core-workflow/spec-core-workflow.md`
 - `plugin/skills/*/SKILL.md`
 - skill-owned templates and reference files under `plugin/skills/`
 

@@ -13,10 +13,16 @@ Full workflow vague idea → PR — less babysitting, enforced discipline, repo 
 
 Ships as **skills only** — no separate slash commands. Invoke each as `/se-discuss`, `/se-plan`, `/se-exec`, or `/se-pr-triage` (or the model auto-invokes on match). On entry each writes the `.super-exec/active` session marker → guards live. Behavior identical whether invoked manually or automatically.
 
-- `/se-discuss` — **Design session.** From a raw idea or task description, interview to one or more reviewed specs (one per cohesive feature — a multi-feature session splits into separate specs with your confirmation), then auto-chain into `/se-plan` for the first spec after approval.
-- `/se-plan` — **Plan / re-plan / re-entry.** Turn a spec into an architecture + verification plan, revise an existing plan, or (no argument) pick up the next unplanned spec from a split. The **plan → execute boundary stays a hard fresh-session step** — never auto-chained.
+- `/se-discuss` — **Design session.** From a raw idea or task description, interview to one or more reviewed specs (one per cohesive feature — a multi-feature session splits into separate specs with your confirmation), then auto-chain into `/se-plan` for the first spec after approval. Specs land under a config-driven root (`docs/specs/` committed or `.super-exec/specs/` local) as `<root>/[<app>/]<feature>/spec-<feature>.md` (slug-only).
+- `/se-plan` — **Plan / re-plan / re-entry.** Turn a spec into an architecture + verification plan, revise an existing plan, or (no argument) pick up the next unplanned spec from a split. Plans land under either root as `<root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md`. The **plan → execute boundary stays a hard fresh-session step** — never auto-chained.
 - `/se-exec` — **Build session.** Execute the selected plan task by task with verification and review checkpoints. Owns plan resume, completion checks, task/todo sync, commit cadence, and the final PR/no-PR decision.
 - `/se-pr-triage` — **Post-PR triage session.** Manual entrypoint; not auto-chained from `/se-pr`. Runs one loop-safe triage round: Track A first gates review-comment decisions and Fix scope, then after successful pushes separately gates the exact final replies before posting; Track B investigates and resolves CI failures autonomously with no PR replies. Neither Track A gate auto-approves under `/loop`.
+
+## Config & support skills
+
+- `/se-config` — **User-facing config command.** Print, write, and migrate the tiered `se-config.json` (local / user / default). Model-invocation disabled; no other skill references it.
+- `/se-get-config` — **Internal merge authority** (`user-invocable: false`). Returns the merged effective config as JSON; skills that decide commit, placement, review, or PR consult it.
+- `/se-slug-naming` — **Internal naming convention** (`user-invocable: false`). Caveman-compressed slug rule for feature/spec/ADR slug and plan-name; authoring skills reference it rather than restating.
 
 ## Precedence (if superpowers is also loaded)
 

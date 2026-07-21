@@ -414,7 +414,7 @@ echo "Check 5: Self-containment grep"
 
 # super-exec stays self-contained, with ONE allowlisted exception: the
 # using-super-exec precedence clause names 'superpowers' on purpose — that is
-# the single skill-precedence site (ADR 0004). 'superpowers' in ANY OTHER file
+# the single skill-precedence site (ADR superpowers-coinstall-skill-precedence). 'superpowers' in ANY OTHER file
 # under plugin/ is a self-containment leak to remove ('impeccable' remains the
 # only other allowed external). The allowlist is exactly one file:
 ALLOWED_SUPERPOWERS_FILE="plugin/skills/using-super-exec/SKILL.md"
@@ -459,7 +459,7 @@ echo "Check 6: Auto-commit authorization framing"
 framing_sites=(
   "plugin/skills/se-exec/SKILL.md|||standing authorization"
   "plugin/skills/using-super-exec/references/cursor-tools.md|||standing authorization"
-  "docs/specs/0001-core-workflow.md|||standing authorization"
+  "docs/specs/core-workflow/spec-core-workflow.md|||standing authorization"
 )
 
 for entry in "${framing_sites[@]}"; do
@@ -489,7 +489,7 @@ fi
 # ---------------------------------------------------------------------------
 # The SessionStart hook keeps super-exec's local-only working dir (.super-exec/)
 # out of git via the repo-local, uncommitted .git/info/exclude (NOT the
-# team-shared .gitignore — ADR 0002). It must do so idempotently on every
+# team-shared .gitignore — ADR local-only-plans-specs-are-the-shared-contract). It must do so idempotently on every
 # session and degrade to a no-op outside a git repo. If a future edit drops
 # this, the dir risks being committed (or the team .gitignore gets polluted
 # again).
@@ -634,6 +634,50 @@ else
     fail "SessionStart must document that it never auto-deletes markers"
   fi
 
+  # v1 layout: active_plan points at a v1 plan file
+  #   <root>/<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md
+  # Orientation must surface the real <feature> (skipping the plans/ level), the
+  # plan-dir, and detect the v1 handoff-<plan-name>.md — never label the feature
+  # as "plans".
+  v1repo="${ttmp}/v1-marker-repo"
+  v1plandir="${v1repo}/.super-exec/specs/payments/plans/2026-07-20-retry-v1"
+  mkdir -p "$v1plandir"
+  ( cd "$v1repo" && git init -q ) 2>/dev/null || true
+  v1_plan="${v1plandir}/plan-retry-v1.md"
+  printf '%s\n' '---' 'title: Retry v1' 'status: in_progress' '---' '# Retry' > "$v1_plan"
+  printf '# handoff\n' > "${v1plandir}/handoff-retry-v1.md"
+  printf 'phase: exec\nactive_plan: %s\n' "$v1_plan" > "${v1repo}/.super-exec/active"
+  v1_output=$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
+    CLAUDE_PROJECT_DIR="$v1repo" CLAUDE_PLUGIN_ROOT="${REPO_ROOT}/plugin" \
+    "$HOOK" 2>/dev/null </dev/null || true)
+  if printf '%s' "$v1_output" | grep -q 'Feature: payments' \
+     && printf '%s' "$v1_output" | grep -q '2026-07-20-retry-v1' \
+     && printf '%s' "$v1_output" | grep -qi 'handoff' \
+     && ! printf '%s' "$v1_output" | grep -q 'Feature: plans'; then
+    pass "SessionStart resolves a v1 plan dir (feature, plan-name, handoff) without mislabeling 'plans'"
+  else
+    fail "SessionStart failed to resolve v1 plan dir correctly (output: ${v1_output:0:200})"
+  fi
+
+  # v1 fallback discovery: NO active_plan value in the marker; a v1 plan file
+  # under the committed docs/specs/ root must still be discovered (both-root).
+  v1fbrepo="${ttmp}/v1-fallback-repo"
+  v1fbplandir="${v1fbrepo}/docs/specs/billing/plans/2026-07-20-invoice-v1"
+  mkdir -p "$v1fbplandir" "${v1fbrepo}/.super-exec"
+  ( cd "$v1fbrepo" && git init -q ) 2>/dev/null || true
+  printf '%s\n' '---' 'title: Invoice v1' 'status: in_progress' '---' '# Invoice' \
+    > "${v1fbplandir}/plan-invoice-v1.md"
+  printf 'phase: exec\n' > "${v1fbrepo}/.super-exec/active"
+  v1fb_output=$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
+    CLAUDE_PROJECT_DIR="$v1fbrepo" CLAUDE_PLUGIN_ROOT="${REPO_ROOT}/plugin" \
+    "$HOOK" 2>/dev/null </dev/null || true)
+  if printf '%s' "$v1fb_output" | grep -q 'Feature: billing' \
+     && printf '%s' "$v1fb_output" | grep -q '2026-07-20-invoice-v1'; then
+    pass "SessionStart fallback discovers a v1 plan under docs/specs/ (both-root discovery)"
+  else
+    fail "SessionStart fallback failed to discover v1 plan under docs/specs/ (output: ${v1fb_output:0:200})"
+  fi
+
   rm -rf "$ttmp"
 fi
 
@@ -643,58 +687,66 @@ fi
 echo ""
 echo "Check 8: Spec filename convention"
 
+# v1 spec-file layout: <root>/[<app>/]<feature>/spec-<feature>.md — slug-only folders (NO running number),
+# scanned across BOTH roots (docs/specs + .super-exec/specs). Only spec files (spec-*.md) are validated here;
+# plan-*.md / handoff-*.md / feature-ADR slug files under a root are ignored. A flat NNNN-<slug>.md spec
+# (a running number at any depth under a root) ALWAYS fails — v1 identity is slug-only, no numbers.
 spec_name_result=$(node -e "
   const fs = require('fs');
   const path = require('path');
-  const specsRoot = path.join('${REPO_ROOT}', 'docs/specs');
+  const roots = ['docs/specs', '.super-exec/specs'].map(r => path.join('${REPO_ROOT}', r));
+  const V0_FLAT = /^\\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\\.md$/;  // NNNN-slug.md (v0, forbidden under v1)
+  const SEG_OK  = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;              // slug charset for a path segment
+  const NUMBERED = /^\\d{4}-/;                               // leading running number on a folder
   const bad = [];
-  const seenByDir = new Map();
 
-  function walk(dir) {
+  function rec(root, dir) {
     if (!fs.existsSync(dir)) return;
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        walk(full);
-        continue;
-      }
+      if (entry.isDirectory()) { rec(root, full); continue; }
       if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
-
       const rel = path.relative('${REPO_ROOT}', full);
-      if (!/^\\d{4}-[a-z0-9]+(?:-[a-z0-9]+)*\\.md$/.test(entry.name)) {
-        bad.push(rel);
-        continue;
-      }
 
-      const dirKey = path.relative(specsRoot, dir) || '.';
-      const num = entry.name.slice(0, 4);
-      const key = dirKey + '/' + num;
-      if (seenByDir.has(key)) {
-        bad.push(rel + ' (duplicate number with ' + seenByDir.get(key) + ')');
-      } else {
-        seenByDir.set(key, rel);
+      if (entry.name.indexOf('spec-') === 0) {
+        // v1 spec file: folder chain root->parent must be slug-only (no number); parent === <feature>.
+        const feature = entry.name.slice(5, -3);
+        const relDir = path.relative(root, path.dirname(full));
+        const segs = relDir === '' ? [] : relDir.split(path.sep);
+        if (segs.length === 0) { bad.push(rel + ' (v1 spec must live in a <feature>/ folder, not the root)'); continue; }
+        for (const s of segs) {
+          if (NUMBERED.test(s)) bad.push(rel + ' (running number in folder \"' + s + '\")');
+          else if (!SEG_OK.test(s)) bad.push(rel + ' (non-slug folder \"' + s + '\")');
+        }
+        if (!SEG_OK.test(feature)) bad.push(rel + ' (feature slug \"' + feature + '\" not slug-only)');
+        else if (segs[segs.length - 1] !== feature) bad.push(rel + ' (spec-<feature> must match its folder \"' + segs[segs.length - 1] + '\")');
+      } else if (V0_FLAT.test(entry.name)) {
+        // numbered spec filename (running number, any depth under a root) — forbidden under slug-only v1 identity.
+        bad.push(rel + ' (numbered spec filename; v1 requires <feature>/spec-<feature>.md, no running number)');
       }
+      // else: plan-*.md / handoff-*.md / feature-ADR slug files — not a spec, ignored.
     }
   }
 
-  walk(specsRoot);
+  for (const root of roots) rec(root, root);
   process.stdout.write(bad.length ? bad.join('\\n') : 'ok');
 " 2>/dev/null || echo "ERROR")
 
 if [ "$spec_name_result" = "ok" ]; then
-  pass "all docs/specs markdown files use NNNN-<slug>.md"
+  pass "spec files conform to v1 layout (<root>/[<app>/]<feature>/spec-<feature>.md, slug-only, both roots; no running numbers)"
 else
-  fail "docs/specs files must use NNNN-<slug>.md:"
+  fail "spec file layout violations (v1 = <root>/[<app>/]<feature>/spec-<feature>.md, slug-only per-feature folder, both roots):"
   echo "$spec_name_result" | sed 's/^/    /'
 fi
 
 spec_convention_sites=(
-  "plugin/skills/se-discuss/SKILL.md|||docs/specs/NNNN-<feature>.md"
-  "plugin/skills/se-discuss/SKILL.md|||next available number"
-  "plugin/skills/se-plan/SKILL.md|||docs/specs/NNNN-<feature>.md"
-  "plugin/skills/se-plan/plan-template.md|||docs/specs/NNNN-<feature>.md"
-  "docs/specs/0001-core-workflow.md|||docs/specs/NNNN-<feature>.md"
-  "docs/adr/0002-local-only-plans-specs-are-the-shared-contract.md|||docs/specs/NNNN-<feature>.md"
+  "plugin/skills/se-discuss/SKILL.md|||spec-<feature>.md"
+  "plugin/skills/se-discuss/SKILL.md|||/se-get-config"
+  "plugin/skills/se-plan/SKILL.md|||plan-<plan-name>.md"
+  "plugin/skills/se-plan/SKILL.md|||/se-get-config"
+  "plugin/skills/se-plan/plan-template.md|||spec-<feature>.md"
+  "docs/specs/core-workflow/spec-core-workflow.md|||<root>/[<app>/]<feature>/spec-<feature>.md"
+  "docs/adr/local-only-plans-specs-are-the-shared-contract.md|||docs/specs/NNNN-<feature>.md"
 )
 
 for entry in "${spec_convention_sites[@]}"; do
@@ -709,6 +761,127 @@ for entry in "${spec_convention_sites[@]}"; do
     fail "spec convention missing in ${rel}: expected phrase \"${phrase}\""
   fi
 done
+
+# --- se-discuss v1 placement (Task 6): config-driven root + slug-only path ---
+discuss_skill="${REPO_ROOT}/plugin/skills/se-discuss/SKILL.md"
+if [ -f "$discuss_skill" ]; then
+  if grep -qF '<root>/[<app>/]<feature>/spec-<feature>.md' "$discuss_skill" 2>/dev/null; then
+    pass "se-discuss SKILL has v1 spec path template <root>/[<app>/]<feature>/spec-<feature>.md"
+  else
+    fail "se-discuss SKILL missing v1 spec path template <root>/[<app>/]<feature>/spec-<feature>.md"
+  fi
+  if grep -qF '/se-get-config' "$discuss_skill" 2>/dev/null \
+     && grep -qF 'commitSpec' "$discuss_skill" 2>/dev/null; then
+    pass "se-discuss SKILL consults /se-get-config for commitSpec"
+  else
+    fail "se-discuss SKILL missing /se-get-config consult for commitSpec"
+  fi
+  if grep -qF 'docs/specs/' "$discuss_skill" 2>/dev/null \
+     && grep -qF '.super-exec/specs/' "$discuss_skill" 2>/dev/null; then
+    pass "se-discuss SKILL mentions both roots docs/specs/ and .super-exec/specs/"
+  else
+    fail "se-discuss SKILL must mention both docs/specs/ and .super-exec/specs/"
+  fi
+  if grep -qF 'docs/specs/NNNN-<feature>.md' "$discuss_skill" 2>/dev/null; then
+    fail "se-discuss SKILL still contains flat v0 write template docs/specs/NNNN-<feature>.md"
+  else
+    pass "se-discuss SKILL no longer uses flat docs/specs/NNNN-<feature>.md write template"
+  fi
+else
+  fail "se-discuss SKILL.md missing"
+fi
+
+# --- se-plan v1 placement (Task 7): config-driven root + slug-only plan path ---
+plan_skill="${REPO_ROOT}/plugin/skills/se-plan/SKILL.md"
+if [ -f "$plan_skill" ]; then
+  if grep -qF '<root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md' "$plan_skill" 2>/dev/null; then
+    pass "se-plan SKILL has v1 plan path template <root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md"
+  else
+    fail "se-plan SKILL missing v1 plan path template <root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md"
+  fi
+  if grep -qF '/se-get-config' "$plan_skill" 2>/dev/null \
+     && grep -qF 'commitPlan' "$plan_skill" 2>/dev/null; then
+    pass "se-plan SKILL consults /se-get-config for commitPlan"
+  else
+    fail "se-plan SKILL missing /se-get-config consult for commitPlan"
+  fi
+  if grep -qF 'docs/specs/' "$plan_skill" 2>/dev/null \
+     && grep -qF '.super-exec/specs/' "$plan_skill" 2>/dev/null; then
+    pass "se-plan SKILL mentions both roots docs/specs/ and .super-exec/specs/"
+  else
+    fail "se-plan SKILL must mention both docs/specs/ and .super-exec/specs/"
+  fi
+  if grep -qF 'NO plan folder' "$plan_skill" 2>/dev/null \
+     && grep -qF 'AskUserQuestion' "$plan_skill" 2>/dev/null \
+     && grep -qF 'which to plan' "$plan_skill" 2>/dev/null; then
+    pass "se-plan no-arg discovery lists unplanned specs and asks which to plan"
+  else
+    fail "se-plan no-arg discovery missing list/ask wording (NO plan folder / which to plan)"
+  fi
+  if grep -qiF 'lowest-numbered' "$plan_skill" 2>/dev/null; then
+    fail "se-plan SKILL still says lowest-numbered (v0 auto-discovery)"
+  else
+    pass "se-plan SKILL no longer uses lowest-numbered auto-discovery"
+  fi
+  if grep -qF 'docs/specs/NNNN-<feature>.md' "$plan_skill" 2>/dev/null; then
+    fail "se-plan SKILL still contains flat v0 path docs/specs/NNNN-<feature>.md"
+  else
+    pass "se-plan SKILL no longer uses flat docs/specs/NNNN-<feature>.md path"
+  fi
+  # Config-aware plan commit on approval: commitPlan decides root AND whether to commit
+  if grep -qF 'commit the approved plan' "$plan_skill" 2>/dev/null \
+     && grep -qF '/se-commit' "$plan_skill" 2>/dev/null \
+     && grep -qF 'docs/specs/' "$plan_skill" 2>/dev/null \
+     && grep -qF 'When the plan lives under `.super-exec/specs/` (local), do **not** commit it and say so' "$plan_skill" 2>/dev/null; then
+    pass "se-plan SKILL commits approved plan via /se-commit under docs/specs/; skips when local"
+  else
+    fail "se-plan SKILL missing config-aware plan-commit wording (/se-commit when docs/specs/; skip when .super-exec/specs/)"
+  fi
+  if grep -qF 'there is no commit tied to this branch' "$plan_skill" 2>/dev/null; then
+    fail "se-plan SKILL still claims always-local plan (there is no commit tied to this branch)"
+  else
+    pass "se-plan SKILL no longer claims always-local plan (no commit tied to this branch)"
+  fi
+else
+  fail "se-plan SKILL.md missing"
+fi
+
+# --- se-exec v1 config + placement (Task 8): toggles from /se-get-config + both-root paths ---
+exec_skill="${REPO_ROOT}/plugin/skills/se-exec/SKILL.md"
+if [ -f "$exec_skill" ]; then
+  if grep -qF '/se-get-config' "$exec_skill" 2>/dev/null \
+     && grep -qF 'humanReviewBeforeCheckpointCommit' "$exec_skill" 2>/dev/null \
+     && grep -qF 'autoCreatePr' "$exec_skill" 2>/dev/null; then
+    pass "se-exec SKILL consults /se-get-config for humanReviewBeforeCheckpointCommit and autoCreatePr"
+  else
+    fail "se-exec SKILL missing /se-get-config consult for humanReviewBeforeCheckpointCommit and autoCreatePr"
+  fi
+  if grep -qF 'resolved `true` or `false` → use it directly, do NOT ask' "$exec_skill" 2>/dev/null \
+     && grep -qF 'Resolved `"ask"` → prompt the user for that one via `AskUserQuestion`' "$exec_skill" 2>/dev/null \
+     && grep -qF 'skip the `AskUserQuestion` ENTIRELY when neither is `"ask"`' "$exec_skill" 2>/dev/null; then
+    pass "se-exec SKILL has config-driven toggle logic (true/false skip AskUserQuestion; ask prompts)"
+  else
+    fail "se-exec SKILL missing config-driven toggle logic (true/false skip; ask → AskUserQuestion)"
+  fi
+  if grep -qF 'docs/specs/' "$exec_skill" 2>/dev/null \
+     && grep -qF '.super-exec/specs/' "$exec_skill" 2>/dev/null; then
+    pass "se-exec SKILL mentions both roots docs/specs/ and .super-exec/specs/"
+  else
+    fail "se-exec SKILL must mention both docs/specs/ and .super-exec/specs/"
+  fi
+  if grep -qF 'handoff-<plan-name>.md' "$exec_skill" 2>/dev/null; then
+    pass "se-exec SKILL uses v1 handoff filename handoff-<plan-name>.md"
+  else
+    fail "se-exec SKILL missing v1 handoff filename handoff-<plan-name>.md"
+  fi
+  if grep -qF 'handoff.md' "$exec_skill" 2>/dev/null; then
+    fail "se-exec SKILL still references bare handoff.md (expected handoff-<plan-name>.md only)"
+  else
+    pass "se-exec SKILL no longer references bare handoff.md"
+  fi
+else
+  fail "se-exec SKILL.md missing"
+fi
 
 # ---------------------------------------------------------------------------
 # Check 9 — Plan frontmatter status contract
@@ -728,7 +901,7 @@ plan_frontmatter_sites=(
   "plugin/skills/se-exec/SKILL.md|||verify the current git branch matches \`branch\`"
   "plugin/skills/se-exec/SKILL.md|||update \`status\` from \`pending\` to \`in_progress\`"
   "plugin/skills/se-exec/SKILL.md|||update \`status\` to \`completed\`"
-  "docs/specs/0001-core-workflow.md|||plan frontmatter"
+  "docs/specs/core-workflow/spec-core-workflow.md|||plan frontmatter"
 )
 
 for entry in "${plan_frontmatter_sites[@]}"; do
@@ -755,7 +928,7 @@ const files = [
   'plugin/skills/se-plan/plan-template.md',
   'plugin/skills/se-plan/SKILL.md',
   'plugin/skills/se-exec/SKILL.md',
-  'docs/specs/0001-core-workflow.md',
+  'docs/specs/core-workflow/spec-core-workflow.md',
 ];
 const old = /\b(ToDo|InProgress)\b|status:\s*ToDo|status`\s+to\s+`Completed`|`Completed`/;
 const hits = [];
@@ -782,7 +955,7 @@ fi
 activation_contract_sites=(
   "plugin/skills/se-exec/SKILL.md|||preserve any existing \`active_plan\`"
   "plugin/skills/se-exec/SKILL.md|||preserve \`branch\` if present"
-  "docs/specs/0001-core-workflow.md|||preserving any existing \`active_plan\`"
+  "docs/specs/core-workflow/spec-core-workflow.md|||preserving any existing \`active_plan\`"
 )
 
 for entry in "${activation_contract_sites[@]}"; do
@@ -802,11 +975,11 @@ done
 # plan approval. Approval may add approved: metadata and gates the fresh-session
 # handoff, but resume/orientation needs a concrete plan path before approval.
 active_plan_timing_sites=(
-  "plugin/skills/se-plan/SKILL.md|||Immediately after \`plan.md\` is written"
+  "plugin/skills/se-plan/SKILL.md|||Immediately after the plan file"
   "plugin/skills/se-plan/SKILL.md|||approval is not the first time \`active_plan\` is recorded"
-  "docs/specs/0001-core-workflow.md|||then immediately record \`active_plan"
-  "docs/specs/0001-core-workflow.md|||approval is not the first time \`active_plan\` is recorded"
-  "plugin/hooks/session-start|||immediately after plan.md write"
+  "docs/specs/core-workflow/spec-core-workflow.md|||then immediately record \`active_plan"
+  "docs/specs/core-workflow/spec-core-workflow.md|||approval is not the first time \`active_plan\` is recorded"
+  "plugin/hooks/session-start|||immediately after the plan file"
 )
 
 for entry in "${active_plan_timing_sites[@]}"; do
@@ -829,7 +1002,7 @@ const path = require('path');
 const repoRoot = process.env.REPO_ROOT;
 const files = [
   'plugin/skills/se-plan/SKILL.md',
-  'docs/specs/0001-core-workflow.md',
+  'docs/specs/core-workflow/spec-core-workflow.md',
   'plugin/hooks/session-start',
 ];
 const forbidden = [
@@ -865,7 +1038,7 @@ completion_guard_sites=(
   "plugin/skills/se-exec/SKILL.md|||checklist exists, has at least one item"
   "plugin/skills/se-exec/SKILL.md|||frontmatter \`status: completed\`"
   "plugin/skills/se-exec/SKILL.md|||tell the user the plan is already completed and stop before steps 3-10"
-  "docs/specs/0001-core-workflow.md|||A missing checklist is never treated as completed"
+  "docs/specs/core-workflow/spec-core-workflow.md|||A missing checklist is never treated as completed"
 )
 
 for entry in "${completion_guard_sites[@]}"; do
@@ -886,7 +1059,7 @@ final_pr_sites=(
   "plugin/skills/se-plan/plan-template.md|||- [ ] Final review / PR decision"
   "plugin/skills/se-plan/SKILL.md|||not an executable task"
   "plugin/skills/se-exec/SKILL.md|||step 10 only"
-  "docs/specs/0001-core-workflow.md|||not an executable implementation task"
+  "docs/specs/core-workflow/spec-core-workflow.md|||not an executable implementation task"
 )
 
 for entry in "${final_pr_sites[@]}"; do
@@ -906,7 +1079,7 @@ done
 # task implementation verifies green.
 post_review_marking_sites=(
   "plugin/skills/se-exec/SKILL.md|||task is committed and outer-loop-clean"
-  "docs/specs/0001-core-workflow.md|||after the task is committed and outer-loop-clean"
+  "docs/specs/core-workflow/spec-core-workflow.md|||after the task is committed and outer-loop-clean"
 )
 
 for entry in "${post_review_marking_sites[@]}"; do
@@ -931,7 +1104,7 @@ task_sync_sites=(
   "plugin/skills/se-exec/SKILL.md|||durable local resume state"
   "plugin/skills/se-exec/SKILL.md|||update the native task/todo tool first"
   "plugin/skills/using-super-exec/SKILL.md|||Individual skills don't branch by harness"
-  "docs/specs/0001-core-workflow.md|||native task/todo tool is operational session state"
+  "docs/specs/core-workflow/spec-core-workflow.md|||native task/todo tool is operational session state"
 )
 
 for entry in "${task_sync_sites[@]}"; do
@@ -1075,12 +1248,12 @@ echo ""
 echo "Check 11: Core spec sync"
 
 core_spec_sites=(
-  "docs/specs/0001-core-workflow.md|||> Ticket: NO_TICKET  ·  Status: active"
-  "docs/specs/0001-core-workflow.md|||four entrypoints"
-  "docs/specs/0001-core-workflow.md|||/se-pr-triage"
-  "docs/specs/0001-core-workflow.md|||se-pr-triage/              # + ci-triage.md; post-PR review/CI triage"
-  "docs/specs/0001-core-workflow.md|||## Data Flow"
-  "docs/specs/0001-core-workflow.md|||### Browser/E2E Preflight"
+  "docs/specs/core-workflow/spec-core-workflow.md|||> Ticket: NO_TICKET  ·  Status: active"
+  "docs/specs/core-workflow/spec-core-workflow.md|||four entrypoints"
+  "docs/specs/core-workflow/spec-core-workflow.md|||/se-pr-triage"
+  "docs/specs/core-workflow/spec-core-workflow.md|||se-pr-triage/              # + ci-triage.md; post-PR review/CI triage"
+  "docs/specs/core-workflow/spec-core-workflow.md|||## Data Flow"
+  "docs/specs/core-workflow/spec-core-workflow.md|||### Browser/E2E Preflight"
   "plugin/skills/using-super-exec/references/cursor-tools.md|||impeccable-critique"
 )
 
@@ -1104,15 +1277,15 @@ const path = require('path');
 const repoRoot = process.env.REPO_ROOT;
 const checks = [
   {
-    rel: 'docs/specs/0001-core-workflow.md',
+    rel: 'docs/specs/core-workflow/spec-core-workflow.md',
     forbidden: [/three entrypoints/i, /build pending/i, /## Data flow\b/, /Status:\s*draft/i, /README.*recommends?.*superpowers/i, /README.*disabl(?:e|ing).*superpowers/i],
   },
   {
-    rel: 'docs/adr/0003-skills-only-no-thin-commands.md',
+    rel: 'docs/adr/skills-only-no-thin-commands.md',
     forbidden: [/three entrypoints/i, /stale-TTL sweep/i],
   },
   {
-    rel: 'docs/adr/0004-superpowers-coinstall-skill-precedence.md',
+    rel: 'docs/adr/superpowers-coinstall-skill-precedence.md',
     forbidden: [/README.*recommends?.*superpowers/i, /README.*disabl(?:e|ing).*superpowers/i, /static README recommendation/i],
   },
 ];
@@ -1160,7 +1333,7 @@ const required = [
   '/se-exec',
   '/se-pr-triage',
   'docs/specs/',
-  'docs/specs/0001-core-workflow.md',
+  'docs/specs/core-workflow/spec-core-workflow.md',
   'plugin/skills/*/SKILL.md',
 ];
 
@@ -1209,7 +1382,7 @@ fi
 # ---------------------------------------------------------------------------
 # The se-local-ignore skill is the single owner and guaranteed layer for keeping
 # .super-exec/ out of git (the SessionStart hook in Check 7 is only a best-effort
-# backup — see ADR 0002). This check enforces: the skill exists and is internal,
+# backup — see ADR local-only-plans-specs-are-the-shared-contract). This check enforces: the skill exists and is internal,
 # documents the canonical command, every driver skill applies it at activation,
 # and the canonical command is idempotent, ignores .super-exec/, and no-ops
 # outside a git repo.
@@ -1358,8 +1531,8 @@ const root = process.env.REPO_ROOT;
 
 const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
 const skill = read('plugin/skills/se-pr-triage/SKILL.md');
-const spec = read('docs/specs/0002-pr-triage-watch-bot.md');
-const core = read('docs/specs/0001-core-workflow.md');
+const spec = read('docs/specs/pr-triage-watch-bot/spec-pr-triage-watch-bot.md');
+const core = read('docs/specs/core-workflow/spec-core-workflow.md');
 const orientation = read('plugin/skills/using-super-exec/SKILL.md');
 const readme = read('README.md');
 const problems = [];
@@ -1426,9 +1599,1023 @@ else
   fail "se-pr-triage two-gate contract problem:"
   echo "$triage_contract_result" | sed 's/^/    /'
 fi
+
 # ---------------------------------------------------------------------------
-# Summary
+# Check 17 — se-config schema + default JSON contract
 # ---------------------------------------------------------------------------
+# Task 1 foundation: schema enumerates exactly the four config keys with
+# true|false|"ask", ships defaults, stable $id, additionalProperties:false;
+# default file carries $schema raw-URL + shipped values.
+echo ""
+echo "Check 17: se-config schema + default JSON"
+
+SCHEMA_URL='https://raw.githubusercontent.com/mek-earnin/super-exec/main/plugin/skills/se-config/se-config.schema.json'
+schema_file="${REPO_ROOT}/plugin/skills/se-config/se-config.schema.json"
+default_file="${REPO_ROOT}/plugin/skills/se-get-config/se-config.default.json"
+
+se_config_contract_output="$(mktemp)"
+if REPO_ROOT="$REPO_ROOT" SCHEMA_URL="$SCHEMA_URL" node >"$se_config_contract_output" 2>/dev/null <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const repoRoot = process.env.REPO_ROOT;
+const schemaUrl = process.env.SCHEMA_URL;
+const problems = [];
+
+const CONFIG_KEYS = [
+  'commitSpec',
+  'commitPlan',
+  'humanReviewBeforeCheckpointCommit',
+  'autoCreatePr',
+];
+const ALLOWED = [true, false, 'ask'];
+const DEFAULTS = {
+  commitSpec: 'ask',
+  commitPlan: false,
+  humanReviewBeforeCheckpointCommit: 'ask',
+  autoCreatePr: 'ask',
+};
+
+function sameSet(a, b) {
+  return a.length === b.length && a.every((x) => b.includes(x));
+}
+
+function sameEnum(actual) {
+  if (!Array.isArray(actual) || actual.length !== ALLOWED.length) return false;
+  return ALLOWED.every((v) => actual.some((x) => Object.is(x, v)));
+}
+
+let schema;
+let defaults;
+try {
+  schema = JSON.parse(fs.readFileSync(path.join(repoRoot, 'plugin/skills/se-config/se-config.schema.json'), 'utf8'));
+} catch (e) {
+  problems.push('schema not valid JSON: ' + e.message);
+}
+try {
+  defaults = JSON.parse(fs.readFileSync(path.join(repoRoot, 'plugin/skills/se-get-config/se-config.default.json'), 'utf8'));
+} catch (e) {
+  problems.push('default not valid JSON: ' + e.message);
+}
+
+if (schema) {
+  if (schema.$id !== schemaUrl) {
+    problems.push(`schema $id expected ${schemaUrl}, got ${JSON.stringify(schema.$id)}`);
+  }
+  if (schema.additionalProperties !== false) {
+    problems.push(`schema additionalProperties expected false, got ${JSON.stringify(schema.additionalProperties)}`);
+  }
+  if (!schema.properties || typeof schema.properties !== 'object') {
+    problems.push('schema missing properties object');
+  } else {
+    const propKeys = Object.keys(schema.properties).filter((k) => k !== '$schema');
+    if (!sameSet(propKeys, CONFIG_KEYS)) {
+      problems.push(`schema config keys expected [${CONFIG_KEYS.join(', ')}], got [${propKeys.join(', ')}]`);
+    }
+    for (const key of CONFIG_KEYS) {
+      const prop = schema.properties[key];
+      if (!prop) {
+        problems.push(`schema missing property: ${key}`);
+        continue;
+      }
+      if (!sameEnum(prop.enum)) {
+        problems.push(`schema ${key}.enum expected [true, false, "ask"], got ${JSON.stringify(prop.enum)}`);
+      }
+      if (!Object.is(prop.default, DEFAULTS[key])) {
+        problems.push(`schema ${key}.default expected ${JSON.stringify(DEFAULTS[key])}, got ${JSON.stringify(prop.default)}`);
+      }
+    }
+  }
+}
+
+if (defaults) {
+  if (defaults.$schema !== schemaUrl) {
+    problems.push(`default $schema expected ${schemaUrl}, got ${JSON.stringify(defaults.$schema)}`);
+  }
+  const defaultKeys = Object.keys(defaults).filter((k) => k !== '$schema');
+  if (!sameSet(defaultKeys, CONFIG_KEYS)) {
+    problems.push(`default config keys expected [${CONFIG_KEYS.join(', ')}], got [${defaultKeys.join(', ')}]`);
+  }
+  for (const key of CONFIG_KEYS) {
+    if (!Object.is(defaults[key], DEFAULTS[key])) {
+      problems.push(`default ${key} expected ${JSON.stringify(DEFAULTS[key])}, got ${JSON.stringify(defaults[key])}`);
+    }
+  }
+}
+
+process.stdout.write(problems.length ? problems.join('\n') : 'ok');
+NODE
+then
+  se_config_contract_result="$(<"$se_config_contract_output")"
+else
+  se_config_contract_result="ERROR"
+fi
+rm -f "$se_config_contract_output"
+
+if [ ! -f "$schema_file" ]; then
+  fail "se-config schema file missing: plugin/skills/se-config/se-config.schema.json"
+elif [ ! -f "$default_file" ]; then
+  fail "se-config default file missing: plugin/skills/se-get-config/se-config.default.json"
+elif [ "$se_config_contract_result" = "ok" ]; then
+  pass "se-config schema + default JSON match the four-key contract"
+else
+  fail "se-config schema/default contract problem:"
+  echo "$se_config_contract_result" | sed 's/^/    /'
+fi
+
+# ---------------------------------------------------------------------------
+# Check 18 — get-merged-config lenient merge + se-get-config skill
+# ---------------------------------------------------------------------------
+# Task 2: internal se-get-config skill + zero-dep get-merged-config script.
+# Assert exact effective JSON for precedence, malformed-tier skip, invalid-value
+# drop, missing files → defaults; plus repo-env precedence and executable bit.
+echo ""
+echo "Check 18: get-merged-config merge + se-get-config skill"
+
+gmc_script="${REPO_ROOT}/plugin/skills/se-get-config/get-merged-config"
+gmc_skill="${REPO_ROOT}/plugin/skills/se-get-config/SKILL.md"
+
+if [ -f "$gmc_skill" ]; then
+  gmc_fm=$(node -e "
+    const fs = require('fs');
+    const c = fs.readFileSync('${gmc_skill}', 'utf8');
+    if (!c.startsWith('---')) { process.stdout.write('no frontmatter'); process.exit(1); }
+    const end = c.slice(3).indexOf('\n---');
+    if (end === -1) { process.stdout.write('unclosed frontmatter'); process.exit(1); }
+    const fm = c.slice(3, 3 + end);
+    const name = (fm.match(/^name:\\s*(.+)/m) || [])[1];
+    const inv = (fm.match(/^user-invocable:\\s*(.+)/m) || [])[1];
+    const issues = [];
+    if (name !== 'se-get-config') issues.push('name=' + JSON.stringify(name));
+    if (String(inv).trim() !== 'false') issues.push('user-invocable=' + JSON.stringify(inv));
+    process.stdout.write(issues.length ? issues.join('; ') : 'ok');
+  " 2>/dev/null || echo "ERROR")
+  if [ "$gmc_fm" = "ok" ]; then
+    pass "se-get-config SKILL.md frontmatter (name + user-invocable: false)"
+  else
+    fail "se-get-config SKILL.md frontmatter problem: ${gmc_fm}"
+  fi
+  if grep -qF '@./get-merged-config' "$gmc_skill" 2>/dev/null; then
+    pass "se-get-config SKILL.md invokes @./get-merged-config"
+  else
+    fail "se-get-config SKILL.md missing @./get-merged-config reference"
+  fi
+  if grep -qiE 'no diagnostics|never.*diagnostics|does not surface diagnostics' "$gmc_skill" 2>/dev/null \
+     && grep -qiE 'lenient|malformed|invalid value' "$gmc_skill" 2>/dev/null; then
+    pass "se-get-config SKILL.md documents lenient merge + no diagnostics"
+  else
+    fail "se-get-config SKILL.md missing lenient/no-diagnostics docs"
+  fi
+else
+  fail "se-get-config SKILL.md missing"
+fi
+
+if [ -x "$gmc_script" ]; then
+  pass "get-merged-config is executable"
+else
+  fail "get-merged-config missing or not executable"
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+  fail "git not available — cannot test get-merged-config behavior"
+elif [ ! -x "$gmc_script" ]; then
+  fail "get-merged-config not executable — cannot run merge behavior tests"
+else
+  gmctmp=$(mktemp -d)
+  gmcrepo="${gmctmp}/repo"
+  gmchome="${gmctmp}/home"
+  mkdir -p "$gmcrepo" "$gmchome"
+  ( cd "$gmcrepo" && git init -q ) 2>/dev/null || true
+
+  EXPECT_DEFAULTS='{"commitSpec":"ask","commitPlan":false,"humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":"ask"}'
+  EXPECT_PRECEDENCE='{"commitSpec":true,"commitPlan":true,"humanReviewBeforeCheckpointCommit":false,"autoCreatePr":"ask"}'
+  EXPECT_MALFORMED='{"commitSpec":false,"commitPlan":false,"humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":"ask"}'
+  EXPECT_INVALID='{"commitSpec":true,"commitPlan":false,"humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":false}'
+
+  run_gmc() {
+    # $1 = HOME, $2 = CLAUDE_PROJECT_DIR (empty to unset), optional $3 = CURSOR_PROJECT_DIR, $4 = cwd
+    local _home="$1" _claude="$2" _cursor="${3:-}" _cwd="${4:-$gmcrepo}"
+    (
+      cd "$_cwd" || exit 1
+      if [ -n "$_claude" ] && [ -n "$_cursor" ]; then
+        env -i PATH="$PATH" HOME="$_home" CLAUDE_PROJECT_DIR="$_claude" CURSOR_PROJECT_DIR="$_cursor" \
+          "$gmc_script"
+      elif [ -n "$_claude" ]; then
+        env -i PATH="$PATH" HOME="$_home" CLAUDE_PROJECT_DIR="$_claude" \
+          "$gmc_script"
+      elif [ -n "$_cursor" ]; then
+        env -i PATH="$PATH" HOME="$_home" CURSOR_PROJECT_DIR="$_cursor" \
+          "$gmc_script"
+      else
+        env -i PATH="$PATH" HOME="$_home" \
+          "$gmc_script"
+      fi
+    )
+  }
+
+  # --- missing local + user → all defaults ---
+  out=$(run_gmc "$gmchome" "$gmcrepo" || true)
+  if [ "$out" = "$EXPECT_DEFAULTS" ]; then
+    pass "get-merged-config missing tiers → all defaults"
+  else
+    fail "get-merged-config missing tiers expected ${EXPECT_DEFAULTS} got ${out}"
+  fi
+
+  # --- local > user > default precedence ---
+  # local: commitSpec/commitPlan; user: humanReview (and lower commit* overridden);
+  # autoCreatePr absent in both → default "ask"
+  mkdir -p "${gmcrepo}/.super-exec" "${gmchome}/.super-exec"
+  cat >"${gmcrepo}/.super-exec/se-config.local.json" <<'EOF'
+{"commitSpec":true,"commitPlan":true}
+EOF
+  cat >"${gmchome}/.super-exec/se-config.json" <<'EOF'
+{"commitSpec":false,"commitPlan":false,"humanReviewBeforeCheckpointCommit":false}
+EOF
+
+  out=$(run_gmc "$gmchome" "$gmcrepo" || true)
+  if [ "$out" = "$EXPECT_PRECEDENCE" ]; then
+    pass "get-merged-config local > user > default precedence"
+  else
+    fail "get-merged-config precedence expected ${EXPECT_PRECEDENCE} got ${out}"
+  fi
+
+  # --- malformed local tier skipped whole; user still applies ---
+  printf '{not json' >"${gmcrepo}/.super-exec/se-config.local.json"
+  cat >"${gmchome}/.super-exec/se-config.json" <<'EOF'
+{"commitSpec":false}
+EOF
+  out=$(run_gmc "$gmchome" "$gmcrepo" || true)
+  if [ "$out" = "$EXPECT_MALFORMED" ]; then
+    pass "get-merged-config malformed local tier skipped whole"
+  else
+    fail "get-merged-config malformed-tier expected ${EXPECT_MALFORMED} got ${out}"
+  fi
+
+  # --- invalid value drops only that key; valid sibling applies ---
+  cat >"${gmcrepo}/.super-exec/se-config.local.json" <<'EOF'
+{"commitSpec":true,"commitPlan":"yes","autoCreatePr":false}
+EOF
+  rm -f "${gmchome}/.super-exec/se-config.json"
+  out=$(run_gmc "$gmchome" "$gmcrepo" || true)
+  if [ "$out" = "$EXPECT_INVALID" ]; then
+    pass "get-merged-config invalid value drops only that key"
+  else
+    fail "get-merged-config invalid-value expected ${EXPECT_INVALID} got ${out}"
+  fi
+
+  # --- repo env precedence: CLAUDE_PROJECT_DIR wins over CURSOR + cwd ---
+  otherrepo="${gmctmp}/other"
+  mkdir -p "${otherrepo}/.super-exec"
+  ( cd "$otherrepo" && git init -q ) 2>/dev/null || true
+  cat >"${otherrepo}/.super-exec/se-config.local.json" <<'EOF'
+{"commitSpec":false,"commitPlan":true,"humanReviewBeforeCheckpointCommit":true,"autoCreatePr":false}
+EOF
+  # Reset primary repo local to a distinct value
+  cat >"${gmcrepo}/.super-exec/se-config.local.json" <<'EOF'
+{"commitSpec":true}
+EOF
+  EXPECT_CLAUDE='{"commitSpec":true,"commitPlan":false,"humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":"ask"}'
+  EXPECT_OTHER='{"commitSpec":false,"commitPlan":true,"humanReviewBeforeCheckpointCommit":true,"autoCreatePr":false}'
+
+  out=$(run_gmc "$gmchome" "$gmcrepo" "$otherrepo" "$otherrepo" || true)
+  if [ "$out" = "$EXPECT_CLAUDE" ]; then
+    pass "get-merged-config CLAUDE_PROJECT_DIR wins over CURSOR_PROJECT_DIR"
+  else
+    fail "get-merged-config CLAUDE precedence expected ${EXPECT_CLAUDE} got ${out}"
+  fi
+
+  out=$(run_gmc "$gmchome" "" "$otherrepo" "$gmcrepo" || true)
+  if [ "$out" = "$EXPECT_OTHER" ]; then
+    pass "get-merged-config CURSOR_PROJECT_DIR used when CLAUDE unset"
+  else
+    fail "get-merged-config CURSOR fallback expected ${EXPECT_OTHER} got ${out}"
+  fi
+
+  out=$(run_gmc "$gmchome" "" "" "$gmcrepo" || true)
+  if [ "$out" = "$EXPECT_CLAUDE" ]; then
+    pass "get-merged-config falls back to cwd when project env unset"
+  else
+    fail "get-merged-config cwd fallback expected ${EXPECT_CLAUDE} got ${out}"
+  fi
+
+  rm -rf "$gmctmp"
+fi
+
+# ---------------------------------------------------------------------------
+# Check 19 — se-slug-naming skill (prose-only naming convention)
+# ---------------------------------------------------------------------------
+# Task 3: internal se-slug-naming skill — shared naming-convention authority.
+# Assert user-invocable: false, prose-only (dir contains only SKILL.md; no
+# sibling scripts), and that the drop-rule list + worked example are embedded.
+echo ""
+echo "Check 19: se-slug-naming skill (prose-only naming convention)"
+
+slug_skill_dir="${REPO_ROOT}/plugin/skills/se-slug-naming"
+slug_skill="${slug_skill_dir}/SKILL.md"
+
+if [ -f "$slug_skill" ]; then
+  pass "se-slug-naming/SKILL.md exists"
+else
+  fail "se-slug-naming/SKILL.md missing"
+fi
+
+if [ -f "$slug_skill" ]; then
+  slug_fm=$(node -e "
+    const fs = require('fs');
+    const c = fs.readFileSync('${slug_skill}', 'utf8');
+    if (!c.startsWith('---')) { process.stdout.write('no frontmatter'); process.exit(1); }
+    const end = c.slice(3).indexOf('\n---');
+    if (end === -1) { process.stdout.write('unclosed frontmatter'); process.exit(1); }
+    const fm = c.slice(3, 3 + end);
+    const name = (fm.match(/^name:\\s*(.+)/m) || [])[1];
+    const inv = (fm.match(/^user-invocable:\\s*(.+)/m) || [])[1];
+    const issues = [];
+    if (String(name).trim() !== 'se-slug-naming') issues.push('name=' + JSON.stringify(name));
+    if (String(inv).trim() !== 'false') issues.push('user-invocable=' + JSON.stringify(inv));
+    process.stdout.write(issues.length ? issues.join('; ') : 'ok');
+  " 2>/dev/null || echo "ERROR")
+  if [ "$slug_fm" = "ok" ]; then
+    pass "se-slug-naming SKILL.md frontmatter (name + user-invocable: false)"
+  else
+    fail "se-slug-naming SKILL.md frontmatter problem: ${slug_fm}"
+  fi
+
+  # Prose-only: skill dir must contain only SKILL.md (no sibling scripts/executables).
+  slug_extras=$(find "$slug_skill_dir" -mindepth 1 -maxdepth 1 ! -name 'SKILL.md' 2>/dev/null || true)
+  if [ -z "$slug_extras" ]; then
+    pass "se-slug-naming is prose-only (dir contains only SKILL.md)"
+  else
+    fail "se-slug-naming must be prose-only (no sibling scripts); found: $(echo "$slug_extras" | tr '\n' ' ')"
+  fi
+
+  # Drop-rule list + worked example must be present in the skill body.
+  # Assert ALL FIVE drop categories via substantive content (token lists / labels),
+  # not rubber-stamp header words that also appear in intro prose (e.g. "filler").
+  if grep -qE '`a`[[:space:]]*/[[:space:]]*`an`[[:space:]]*/[[:space:]]*`the`|\ba\b[[:space:]]*/[[:space:]]*.*[[:space:]]*/[[:space:]]*.*\bthe\b' "$slug_skill" 2>/dev/null \
+     && grep -qE '`is`[[:space:]]*/.*/.*`being`|\bis\b[[:space:]]*/.*/.*\bbeing\b' "$slug_skill" 2>/dev/null \
+     && grep -qE '`just`[[:space:]]*/.*/.*`simply`|\bjust\b[[:space:]]*/.*/.*\bsimply\b' "$slug_skill" 2>/dev/null \
+     && grep -qiE 'pleasantries' "$slug_skill" 2>/dev/null \
+     && grep -qiE 'hedging' "$slug_skill" 2>/dev/null; then
+    pass "se-slug-naming embeds drop-rule list (articles, be-verbs, filler, pleasantries, hedging)"
+  else
+    fail "se-slug-naming missing embedded drop-rule list (articles / be-verbs / filler / pleasantries / hedging)"
+  fi
+
+  if grep -qF 'local-only-plans-specs-are-the-shared-contract' "$slug_skill" 2>/dev/null \
+     && grep -qF 'local-only-plans-specs-shared-contract' "$slug_skill" 2>/dev/null; then
+    pass "se-slug-naming includes worked example string"
+  else
+    fail "se-slug-naming missing worked example (local-only-plans-specs-are-the-shared-contract → local-only-plans-specs-shared-contract)"
+  fi
+
+  if grep -qiE 'forward-only|FORWARD-ONLY' "$slug_skill" 2>/dev/null \
+     && grep -qiE 'never recompress|migration never recompress' "$slug_skill" 2>/dev/null; then
+    pass "se-slug-naming states FORWARD-ONLY (migrate never recompresses)"
+  else
+    fail "se-slug-naming missing FORWARD-ONLY / never-recompress statement"
+  fi
+
+  if grep -qiE 'self-contained|embeds the drop' "$slug_skill" 2>/dev/null \
+     && grep -qiE 'does([[:space:]]|\*)+NOT([[:space:]]|\*)+depend|does not depend' "$slug_skill" 2>/dev/null \
+     && grep -qiF 'caveman' "$slug_skill" 2>/dev/null; then
+    pass "se-slug-naming states self-contained (no external caveman dependency)"
+  else
+    fail "se-slug-naming missing self-contained / no-external-caveman statement"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# Check 20 — se-config skill: print + set (Task 4)
+# ---------------------------------------------------------------------------
+# Human read/write surface. CLI owns raw-tier print + validated set; Effective
+# (merged) is SKILL-level via /se-get-config — CLI must NOT merge or shell out
+# to get-merged-config. migrate coverage lives in Check 21.
+echo ""
+echo "Check 20: se-config skill print + set"
+
+secfg_cli="${REPO_ROOT}/plugin/skills/se-config/se-config-cli"
+secfg_skill="${REPO_ROOT}/plugin/skills/se-config/SKILL.md"
+SCHEMA_URL_SET='https://raw.githubusercontent.com/mek-earnin/super-exec/main/plugin/skills/se-config/se-config.schema.json'
+
+if [ -f "$secfg_skill" ]; then
+  secfg_fm=$(node -e "
+    const fs = require('fs');
+    const c = fs.readFileSync('${secfg_skill}', 'utf8');
+    if (!c.startsWith('---')) { process.stdout.write('no frontmatter'); process.exit(1); }
+    const end = c.slice(3).indexOf('\n---');
+    if (end === -1) { process.stdout.write('unclosed frontmatter'); process.exit(1); }
+    const fm = c.slice(3, 3 + end);
+    const name = (fm.match(/^name:\\s*(.+)/m) || [])[1];
+    const dmi = (fm.match(/^disable-model-invocation:\\s*(.+)/m) || [])[1];
+    const inv = (fm.match(/^user-invocable:\\s*(.+)/m) || [])[1];
+    const issues = [];
+    if (String(name).trim() !== 'se-config') issues.push('name=' + JSON.stringify(name));
+    if (String(dmi).trim() !== 'true') issues.push('disable-model-invocation=' + JSON.stringify(dmi));
+    if (inv !== undefined && String(inv).trim() === 'false') {
+      issues.push('user-invocable must not be false');
+    }
+    process.stdout.write(issues.length ? issues.join('; ') : 'ok');
+  " 2>/dev/null || echo "ERROR")
+  if [ "$secfg_fm" = "ok" ]; then
+    pass "se-config SKILL.md frontmatter (name + disable-model-invocation: true)"
+  else
+    fail "se-config SKILL.md frontmatter problem: ${secfg_fm}"
+  fi
+
+  # disable-model-invocation must be documented for Cursor parity / graceful degradation
+  cursor_tools_ref="${REPO_ROOT}/plugin/skills/using-super-exec/references/cursor-tools.md"
+  if [ -f "$cursor_tools_ref" ] \
+     && grep -qiE 'disable-model-invocation.*(degrad|graceful)' "$cursor_tools_ref" 2>/dev/null; then
+    pass "cursor-tools.md documents disable-model-invocation Cursor parity/graceful degradation"
+  else
+    fail "cursor-tools.md must document disable-model-invocation Cursor parity/graceful degradation"
+  fi
+
+  if grep -qF '@./se-config-cli' "$secfg_skill" 2>/dev/null; then
+    pass "se-config SKILL.md invokes @./se-config-cli"
+  else
+    fail "se-config SKILL.md missing @./se-config-cli reference"
+  fi
+
+  if grep -qF '/se-get-config' "$secfg_skill" 2>/dev/null \
+     && grep -qiE 'Effective \(merged\)|effective \(merged\)' "$secfg_skill" 2>/dev/null \
+     && grep -qiE 'no other skill' "$secfg_skill" 2>/dev/null; then
+    pass "se-config SKILL.md documents Effective via /se-get-config + exclusivity"
+  else
+    fail "se-config SKILL.md missing Effective/se-get-config or exclusivity docs"
+  fi
+else
+  fail "se-config SKILL.md missing"
+fi
+
+if [ -x "$secfg_cli" ]; then
+  pass "se-config-cli is executable"
+else
+  fail "se-config-cli missing or not executable"
+fi
+
+# Hard architectural constraint: CLI must not couple to se-get-config files.
+if [ -f "$secfg_cli" ]; then
+  if grep -qiE 'get-merged-config|se-get-config' "$secfg_cli" 2>/dev/null; then
+    # Comments mentioning the constraint are OK; requiring/shelling-out is not.
+    if grep -qE "require\\(.*get-merged-config|spawn.*get-merged-config|exec.*get-merged-config|se-get-config/" "$secfg_cli" 2>/dev/null; then
+      fail "se-config-cli must not require/shell-out to get-merged-config / se-get-config"
+    else
+      pass "se-config-cli has no runtime coupling to se-get-config"
+    fi
+  else
+    pass "se-config-cli has no runtime coupling to se-get-config"
+  fi
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+  fail "git not available — cannot test se-config-cli behavior"
+elif [ ! -x "$secfg_cli" ]; then
+  fail "se-config-cli not executable — cannot run print/set behavior tests"
+else
+  secfgtmp=$(mktemp -d)
+  secfgrepo="${secfgtmp}/repo"
+  secfghome="${secfgtmp}/home"
+  mkdir -p "$secfgrepo" "$secfghome"
+  ( cd "$secfgrepo" && git init -q ) 2>/dev/null || true
+
+  run_secfg() {
+    # Args after env: forwarded to se-config-cli
+    local _home="$1" _claude="$2"
+    shift 2
+    (
+      cd "$secfgrepo" || exit 1
+      env -i PATH="$PATH" HOME="$_home" CLAUDE_PROJECT_DIR="$_claude" \
+        "$secfg_cli" "$@"
+    )
+  }
+
+  # --- set: accept each valid value for a valid key ---
+  set_ok=1
+  for val in true false ask; do
+    if ! run_secfg "$secfghome" "$secfgrepo" set local commitSpec "$val" >/dev/null 2>&1; then
+      set_ok=0
+      fail "se-config-cli set rejected valid value ${val}"
+    fi
+  done
+  if [ "$set_ok" -eq 1 ]; then
+    pass "se-config-cli set accepts true|false|ask"
+  fi
+
+  # --- set: reject invalid key ---
+  if run_secfg "$secfghome" "$secfgrepo" set local notAKey true >/dev/null 2>&1; then
+    fail "se-config-cli set should reject invalid key"
+  else
+    pass "se-config-cli set rejects invalid key"
+  fi
+
+  # --- set: reject invalid value ---
+  if run_secfg "$secfghome" "$secfgrepo" set local commitSpec yes >/dev/null 2>&1; then
+    fail "se-config-cli set should reject invalid value"
+  else
+    pass "se-config-cli set rejects invalid value"
+  fi
+
+  # --- set: reject target default ---
+  if run_secfg "$secfghome" "$secfgrepo" set default commitSpec true >/dev/null 2>&1; then
+    fail "se-config-cli set should reject target default"
+  else
+    pass "se-config-cli set rejects target default"
+  fi
+
+  # --- set: creates tier file WITH $schema; update preserves sibling key ---
+  rm -rf "${secfgrepo}/.super-exec" "${secfghome}/.super-exec"
+  run_secfg "$secfghome" "$secfgrepo" set local commitSpec true >/dev/null 2>&1 || true
+  run_secfg "$secfghome" "$secfgrepo" set local commitPlan false >/dev/null 2>&1 || true
+  set_file_check=$(node -e "
+    const fs = require('fs');
+    const p = '${secfgrepo}/.super-exec/se-config.local.json';
+    let obj;
+    try { obj = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) {
+      process.stdout.write('parse-fail:' + e.message); process.exit(0);
+    }
+    const issues = [];
+    if (obj['\$schema'] !== '${SCHEMA_URL_SET}') issues.push('\$schema=' + JSON.stringify(obj['\$schema']));
+    if (obj.commitSpec !== true) issues.push('commitSpec=' + JSON.stringify(obj.commitSpec));
+    if (obj.commitPlan !== false) issues.push('commitPlan=' + JSON.stringify(obj.commitPlan));
+    process.stdout.write(issues.length ? issues.join('; ') : 'ok');
+  " 2>/dev/null || echo "ERROR")
+  if [ "$set_file_check" = "ok" ]; then
+    pass "se-config-cli set creates file with \$schema and preserves sibling key"
+  else
+    fail "se-config-cli set file content problem: ${set_file_check}"
+  fi
+
+  # --- set user tier also creates under HOME ---
+  run_secfg "$secfghome" "$secfgrepo" set user autoCreatePr ask >/dev/null 2>&1 || true
+  if [ -f "${secfghome}/.super-exec/se-config.json" ]; then
+    pass "se-config-cli set user writes ~/.super-exec/se-config.json"
+  else
+    fail "se-config-cli set user did not create user tier file"
+  fi
+
+  # --- unknown subcommand → non-zero (migrate is a real subcommand now) ---
+  if run_secfg "$secfghome" "$secfgrepo" not-a-real-cmd >/dev/null 2>&1; then
+    fail "se-config-cli unknown subcommand should exit non-zero"
+  else
+    pass "se-config-cli unknown subcommand exits non-zero"
+  fi
+
+  # --- print: local block then user block; never a default block ---
+  mkdir -p "${secfgrepo}/.super-exec" "${secfghome}/.super-exec"
+  cat >"${secfgrepo}/.super-exec/se-config.local.json" <<'EOF'
+{
+  "$schema": "https://raw.githubusercontent.com/mek-earnin/super-exec/main/plugin/skills/se-config/se-config.schema.json",
+  "commitSpec": true
+}
+EOF
+  cat >"${secfghome}/.super-exec/se-config.json" <<'EOF'
+{
+  "$schema": "https://raw.githubusercontent.com/mek-earnin/super-exec/main/plugin/skills/se-config/se-config.schema.json",
+  "commitPlan": false
+}
+EOF
+  print_out=$(run_secfg "$secfghome" "$secfgrepo" print 2>/dev/null || true)
+  print_order_ok=$(node -e "
+    const out = process.argv[1];
+    const localIdx = out.search(/===\\s*local\\s*===/i);
+    const userIdx = out.search(/===\\s*user\\s*===/i);
+    const defaultIdx = out.search(/===\\s*default\\s*===/i);
+    const issues = [];
+    if (localIdx < 0) issues.push('missing local block');
+    if (userIdx < 0) issues.push('missing user block');
+    if (localIdx >= 0 && userIdx >= 0 && !(localIdx < userIdx)) issues.push('local must precede user');
+    if (defaultIdx >= 0) issues.push('must not render default block');
+    if (!/\"commitSpec\":\\s*true/.test(out)) issues.push('local commitSpec missing in output');
+    if (!/\"commitPlan\":\\s*false/.test(out)) issues.push('user commitPlan missing in output');
+    process.stdout.write(issues.length ? issues.join('; ') : 'ok');
+  " "$print_out" 2>/dev/null || echo "ERROR")
+  if [ "$print_order_ok" = "ok" ]; then
+    pass "se-config-cli print shows local then user; never default"
+  else
+    fail "se-config-cli print ordering problem: ${print_order_ok}"
+  fi
+
+  # --- print: malformed local flagged as diagnostic ---
+  printf '{not json' >"${secfgrepo}/.super-exec/se-config.local.json"
+  print_malformed=$(run_secfg "$secfghome" "$secfgrepo" print 2>/dev/null || true)
+  if echo "$print_malformed" | grep -qiE 'MALFORMED|invalid JSON|diagnostic' \
+     && echo "$print_malformed" | grep -qiE 'local'; then
+    pass "se-config-cli print flags malformed local as diagnostic"
+  else
+    fail "se-config-cli print missing malformed-local diagnostic"
+  fi
+
+  # --- print: invalid value for known key flagged as diagnostic ---
+  cat >"${secfgrepo}/.super-exec/se-config.local.json" <<'EOF'
+{
+  "commitSpec": true,
+  "commitPlan": "yes"
+}
+EOF
+  print_invalid=$(run_secfg "$secfghome" "$secfgrepo" print 2>/dev/null || true)
+  if echo "$print_invalid" | grep -qiE 'diagnostic:.*invalid value.*commitPlan|invalid value for "commitPlan"'; then
+    pass "se-config-cli print flags invalid value as diagnostic"
+  else
+    fail "se-config-cli print missing invalid-value diagnostic"
+  fi
+
+  rm -rf "$secfgtmp"
+fi
+
+# ---------------------------------------------------------------------------
+# Check 21 — se-config migrate (Task 5)
+# ---------------------------------------------------------------------------
+# Manual v0→v1 structural migration. ALL fixtures live in mktemp -d — never
+# touch the real super-exec repo or real $HOME.
+echo ""
+echo "Check 21: se-config migrate (v0→v1)"
+
+mig_cli="${REPO_ROOT}/plugin/skills/se-config/se-config-cli"
+mig_skill="${REPO_ROOT}/plugin/skills/se-config/SKILL.md"
+
+if [ -f "$mig_skill" ]; then
+  if grep -qE 'migrate' "$mig_skill" 2>/dev/null \
+     && grep -qE -- '--apply' "$mig_skill" 2>/dev/null \
+     && grep -qiE 'dry-run|DRY-RUN|dry run' "$mig_skill" 2>/dev/null \
+     && grep -qiE 'idempotent' "$mig_skill" 2>/dev/null; then
+    pass "se-config SKILL.md documents migrate (dry-run, --apply, idempotent)"
+  else
+    fail "se-config SKILL.md missing migrate docs (dry-run / --apply / idempotent)"
+  fi
+else
+  fail "se-config SKILL.md missing"
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+  fail "git not available — cannot test se-config migrate"
+elif [ ! -x "$mig_cli" ]; then
+  fail "se-config-cli not executable — cannot test migrate"
+else
+  migtmp=$(mktemp -d)
+  migrepo="${migtmp}/repo"
+  mighome="${migtmp}/home"
+  mkdir -p "$migrepo" "$mighome"
+  (
+    cd "$migrepo" || exit 1
+    git init -q
+    git config user.email "migrate-test@example.com"
+    git config user.name "Migrate Test"
+  ) 2>/dev/null || true
+
+  run_mig() {
+    local _home="$1" _claude="$2"
+    shift 2
+    (
+      cd "$migrepo" || exit 1
+      env -i PATH="$PATH" HOME="$_home" CLAUDE_PROJECT_DIR="$_claude" \
+        "$mig_cli" "$@"
+    )
+  }
+
+  # --- Build v0 fixture matrix (all inside migrepo) ---
+  mkdir -p \
+    "${migrepo}/docs/specs" \
+    "${migrepo}/docs/specs/payments" \
+    "${migrepo}/docs/specs/already-feature" \
+    "${migrepo}/docs/adr" \
+    "${migrepo}/.super-exec/0003-widget-feature/2026-07-20-widget-plan" \
+    "${migrepo}/.super-exec/payments/0001-cashout/2026-06-01-cashout-v1"
+
+  # TRACKED spec
+  cat >"${migrepo}/docs/specs/0002-tracked-feature.md" <<'EOF'
+# tracked-feature
+> Ticket: NO_TICKET
+EOF
+  # UNTRACKED spec
+  cat >"${migrepo}/docs/specs/0004-untracked-feature.md" <<'EOF'
+# untracked-feature
+EOF
+  # Monorepo <app> tracked spec
+  cat >"${migrepo}/docs/specs/payments/0007-payout-flow.md" <<'EOF'
+# payout-flow (monorepo)
+EOF
+  # Numbered GLOBAL ADR (tracked)
+  cat >"${migrepo}/docs/adr/0005-global-decision.md" <<'EOF'
+# ADR: global-decision
+EOF
+  # Already-v1 dir (must be skipped)
+  cat >"${migrepo}/docs/specs/already-feature/spec-already-feature.md" <<'EOF'
+# already-feature (v1)
+EOF
+  # Already-unnumbered ADR (must be skipped)
+  cat >"${migrepo}/docs/adr/plain-slug.md" <<'EOF'
+# already unnumbered ADR
+EOF
+
+  # Plan + handoff with Spec:/Plan: pointers
+  cat >"${migrepo}/.super-exec/0003-widget-feature/2026-07-20-widget-plan/plan.md" <<'EOF'
+# widget plan
+## Goal
+Build widgets. Spec: `docs/specs/0002-tracked-feature.md`
+EOF
+  cat >"${migrepo}/.super-exec/0003-widget-feature/2026-07-20-widget-plan/handoff.md" <<'EOF'
+# Handoff
+## Session State
+- Plan: .super-exec/0003-widget-feature/2026-07-20-widget-plan/plan.md
+EOF
+
+  # Monorepo plan
+  cat >"${migrepo}/.super-exec/payments/0001-cashout/2026-06-01-cashout-v1/plan.md" <<'EOF'
+# cashout plan
+Spec: `docs/specs/payments/0007-payout-flow.md`
+EOF
+
+  # active marker with spec: + active_plan: (both rewritten on migrate)
+  cat >"${migrepo}/.super-exec/active" <<'EOF'
+phase: exec
+spec: docs/specs/0002-tracked-feature.md
+active_plan: .super-exec/0003-widget-feature/2026-07-20-widget-plan/plan.md
+branch: test-branch
+EOF
+
+  # Commit tracked files only (spec + ADR + monorepo spec); leave untracked spec + .super-exec alone
+  (
+    cd "$migrepo" || exit 1
+    git add \
+      docs/specs/0002-tracked-feature.md \
+      docs/specs/payments/0007-payout-flow.md \
+      docs/adr/0005-global-decision.md \
+      docs/specs/already-feature/spec-already-feature.md \
+      docs/adr/plain-slug.md
+    git commit -q -m "v0 fixtures for migrate test"
+  ) 2>/dev/null || true
+
+  # Snapshot tree before dry-run
+  before_tree=$(cd "$migrepo" && find . -type f | sort)
+
+  # --- dry-run: lists moves, changes NOTHING ---
+  dry_out=$(run_mig "$mighome" "$migrepo" migrate 2>/dev/null || true)
+  after_dry_tree=$(cd "$migrepo" && find . -type f | sort)
+  dry_ok=1
+  if [ "$before_tree" != "$after_dry_tree" ]; then
+    dry_ok=0
+    fail "migrate dry-run mutated the filesystem"
+  else
+    pass "migrate dry-run changes nothing on disk"
+  fi
+
+  dry_list_ok=$(node -e "
+    const out = process.argv[1];
+    const issues = [];
+    const required = [
+      'docs/specs/0002-tracked-feature.md',
+      'docs/specs/tracked-feature/spec-tracked-feature.md',
+      'docs/specs/0004-untracked-feature.md',
+      'docs/specs/untracked-feature/spec-untracked-feature.md',
+      'docs/specs/payments/0007-payout-flow.md',
+      'docs/specs/payments/payout-flow/spec-payout-flow.md',
+      'docs/adr/0005-global-decision.md',
+      'docs/adr/global-decision.md',
+      '.super-exec/0003-widget-feature/2026-07-20-widget-plan/plan.md',
+      '.super-exec/specs/widget-feature/plans/2026-07-20-widget-plan/plan-widget-plan.md',
+      'handoff-widget-plan.md',
+      '.super-exec/specs/payments/cashout/plans/2026-06-01-cashout-v1/plan-cashout-v1.md',
+      'active_plan:',
+      'spec:',
+    ];
+    for (const s of required) {
+      if (!out.includes(s)) issues.push('missing in dry-run: ' + s);
+    }
+    if (!/DRY-RUN/i.test(out)) issues.push('missing DRY-RUN marker');
+    process.stdout.write(issues.length ? issues.join('; ') : 'ok');
+  " "$dry_out" 2>/dev/null || echo "ERROR")
+  if [ "$dry_list_ok" = "ok" ]; then
+    pass "migrate dry-run lists correct v0→v1 moves + spec:/active_plan: rewrite"
+  else
+    fail "migrate dry-run listing problem: ${dry_list_ok}"
+  fi
+
+  # --- --apply: exact v1 paths ---
+  apply_out=$(run_mig "$mighome" "$migrepo" migrate --apply 2>/dev/null || true)
+
+  apply_paths_ok=$(node -e "
+    const fs = require('fs');
+    const path = require('path');
+    const root = process.argv[1];
+    const issues = [];
+    function exists(rel) {
+      try { fs.accessSync(path.join(root, rel)); return true; } catch (_) { return false; }
+    }
+    const mustExist = [
+      'docs/specs/tracked-feature/spec-tracked-feature.md',
+      'docs/specs/untracked-feature/spec-untracked-feature.md',
+      'docs/specs/payments/payout-flow/spec-payout-flow.md',
+      'docs/adr/global-decision.md',
+      'docs/specs/already-feature/spec-already-feature.md',
+      'docs/adr/plain-slug.md',
+      '.super-exec/specs/widget-feature/plans/2026-07-20-widget-plan/plan-widget-plan.md',
+      '.super-exec/specs/widget-feature/plans/2026-07-20-widget-plan/handoff-widget-plan.md',
+      '.super-exec/specs/payments/cashout/plans/2026-06-01-cashout-v1/plan-cashout-v1.md',
+    ];
+    const mustGone = [
+      'docs/specs/0002-tracked-feature.md',
+      'docs/specs/0004-untracked-feature.md',
+      'docs/specs/payments/0007-payout-flow.md',
+      'docs/adr/0005-global-decision.md',
+      '.super-exec/0003-widget-feature/2026-07-20-widget-plan/plan.md',
+      '.super-exec/0003-widget-feature/2026-07-20-widget-plan/handoff.md',
+      '.super-exec/payments/0001-cashout/2026-06-01-cashout-v1/plan.md',
+    ];
+    for (const p of mustExist) if (!exists(p)) issues.push('missing: ' + p);
+    for (const p of mustGone) if (exists(p)) issues.push('still present: ' + p);
+    process.stdout.write(issues.length ? issues.join('; ') : 'ok');
+  " "$migrepo" 2>/dev/null || echo "ERROR")
+  if [ "$apply_paths_ok" = "ok" ]; then
+    pass "migrate --apply produces exact v1 paths (NNNN- stripped)"
+  else
+    fail "migrate --apply path problem: ${apply_paths_ok}"
+  fi
+
+  # --- git tracking preserved for tracked files (git mv) ---
+  tracked_ok=$(
+    cd "$migrepo" || exit 1
+    issues=""
+    # Tracked dest must be in the index / known to git
+    for rel in \
+      docs/specs/tracked-feature/spec-tracked-feature.md \
+      docs/specs/payments/payout-flow/spec-payout-flow.md \
+      docs/adr/global-decision.md
+    do
+      if ! git ls-files --error-unmatch "$rel" >/dev/null 2>&1; then
+        issues="${issues}not tracked: ${rel}; "
+      fi
+    done
+    # Untracked dest must NOT be in the index
+    if git ls-files --error-unmatch docs/specs/untracked-feature/spec-untracked-feature.md >/dev/null 2>&1; then
+      issues="${issues}untracked spec wrongly in index; "
+    fi
+    # Rename detectable via status or log --follow
+    if ! git status --short | grep -qE 'R[ ]+.*tracked-feature|docs/specs/tracked-feature'; then
+      # After commit-less rename, status should show renames or staged R
+      if ! git status --short | grep -q 'tracked-feature'; then
+        issues="${issues}no rename/status evidence for tracked-feature; "
+      fi
+    fi
+    if [ -z "$issues" ]; then echo ok; else echo "$issues"; fi
+  )
+  if [ "$tracked_ok" = "ok" ]; then
+    pass "migrate --apply preserves git tracking (git mv for tracked files)"
+  else
+    fail "migrate git-tracking problem: ${tracked_ok}"
+  fi
+
+  # --- pointer rewrites ---
+  ptr_ok=$(node -e "
+    const fs = require('fs');
+    const path = require('path');
+    const root = process.argv[1];
+    const issues = [];
+    const plan = fs.readFileSync(path.join(root, '.super-exec/specs/widget-feature/plans/2026-07-20-widget-plan/plan-widget-plan.md'), 'utf8');
+    const handoff = fs.readFileSync(path.join(root, '.super-exec/specs/widget-feature/plans/2026-07-20-widget-plan/handoff-widget-plan.md'), 'utf8');
+    const active = fs.readFileSync(path.join(root, '.super-exec/active'), 'utf8');
+    if (!plan.includes('docs/specs/tracked-feature/spec-tracked-feature.md')) issues.push('plan Spec: not rewritten');
+    if (plan.includes('docs/specs/0002-tracked-feature.md')) issues.push('plan still has old Spec path');
+    if (!handoff.includes('.super-exec/specs/widget-feature/plans/2026-07-20-widget-plan/plan-widget-plan.md')) issues.push('handoff Plan: not rewritten');
+    if (handoff.includes('.super-exec/0003-widget-feature/')) issues.push('handoff still has old Plan path');
+    if (!/active_plan:\\s*\\.super-exec\\/specs\\/widget-feature\\/plans\\/2026-07-20-widget-plan\\/plan-widget-plan\\.md/.test(active)) {
+      issues.push('active active_plan: not rewritten');
+    }
+    if (!/spec:\\s*docs\\/specs\\/tracked-feature\\/spec-tracked-feature\\.md/.test(active)) {
+      issues.push('active spec: not rewritten');
+    }
+    if (/spec:\\s*docs\\/specs\\/0002-tracked-feature\\.md/.test(active)) {
+      issues.push('active still has old spec: path');
+    }
+    process.stdout.write(issues.length ? issues.join('; ') : 'ok');
+  " "$migrepo" 2>/dev/null || echo "ERROR")
+  if [ "$ptr_ok" = "ok" ]; then
+    pass "migrate rewrites Spec: / Plan: / spec: / active_plan: pointers"
+  else
+    fail "migrate pointer rewrite problem: ${ptr_ok}"
+  fi
+
+  # --- global ADR stays in docs/adr/, number stripped, NOT feature-specific ---
+  if [ -f "${migrepo}/docs/adr/global-decision.md" ] \
+     && [ ! -f "${migrepo}/docs/adr/0005-global-decision.md" ] \
+     && ! find "${migrepo}/docs/specs" -path '*/adr/global-decision.md' 2>/dev/null | grep -q .; then
+    pass "numbered global ADR → docs/adr/<slug>.md (stays global)"
+  else
+    fail "global ADR migration incorrect (must stay in docs/adr/, not feature-specific)"
+  fi
+
+  # --- boundary: nothing crossed docs ↔ .super-exec ---
+  boundary_ok=$(node -e "
+    const fs = require('fs');
+    const path = require('path');
+    const root = process.argv[1];
+    const issues = [];
+    // Specs must remain under docs/
+    for (const p of [
+      'docs/specs/tracked-feature/spec-tracked-feature.md',
+      'docs/specs/untracked-feature/spec-untracked-feature.md',
+      'docs/specs/payments/payout-flow/spec-payout-flow.md',
+    ]) {
+      if (!fs.existsSync(path.join(root, p))) issues.push('missing docs spec: ' + p);
+    }
+    // Plans must remain under .super-exec/
+    for (const p of [
+      '.super-exec/specs/widget-feature/plans/2026-07-20-widget-plan/plan-widget-plan.md',
+      '.super-exec/specs/payments/cashout/plans/2026-06-01-cashout-v1/plan-cashout-v1.md',
+    ]) {
+      if (!fs.existsSync(path.join(root, p))) issues.push('missing se plan: ' + p);
+    }
+    // No plan under docs/, no spec under .super-exec/specs from these fixtures with wrong root
+    function walk(dir, acc) {
+      let ents; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+      for (const e of ents) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) walk(full, acc);
+        else acc.push(path.relative(root, full).split(path.sep).join('/'));
+      }
+    }
+    const all = [];
+    walk(root, all);
+    for (const rel of all) {
+      if (rel.startsWith('docs/') && /\\/plans\\//.test(rel) && /plan-/.test(rel)) {
+        issues.push('plan crossed into docs: ' + rel);
+      }
+      if (rel.startsWith('.super-exec/specs/') && /spec-tracked-feature\\.md$/.test(rel)) {
+        issues.push('tracked spec crossed into .super-exec: ' + rel);
+      }
+    }
+    process.stdout.write(issues.length ? issues.join('; ') : 'ok');
+  " "$migrepo" 2>/dev/null || echo "ERROR")
+  if [ "$boundary_ok" = "ok" ]; then
+    pass "migrate preserves docs ↔ .super-exec boundary"
+  else
+    fail "migrate boundary problem: ${boundary_ok}"
+  fi
+
+  # --- idempotent re-run ---
+  tree_after_apply=$(cd "$migrepo" && find . -type f | sort)
+  rerun_out=$(run_mig "$mighome" "$migrepo" migrate --apply 2>/dev/null || true)
+  tree_after_rerun=$(cd "$migrepo" && find . -type f | sort)
+  if [ "$tree_after_apply" = "$tree_after_rerun" ] \
+     && echo "$rerun_out" | grep -qiE 'Nothing to migrate|no-op|No v0 artifacts'; then
+    pass "migrate --apply re-run is idempotent no-op"
+  elif [ "$tree_after_apply" = "$tree_after_rerun" ]; then
+    pass "migrate --apply re-run is idempotent no-op"
+  else
+    fail "migrate --apply re-run mutated filesystem (not idempotent)"
+  fi
+
+  rm -rf "$migtmp"
+fi
+
+# ---------------------------------------------------------------------------
+# Check 22 — Task 9 anti-straggler + using-super-exec config skills
+# ---------------------------------------------------------------------------
+# v0 path tokens must not remain in plugin/skills outside se-config/
+# (se-config keeps migration-context v0 wording on purpose).
+echo ""
+echo "Check 22: Task 9 anti-straggler (v0 tokens outside se-config)"
+
+straggler_hits="$(mktemp)"
+: >"$straggler_hits"
+(
+  cd "$REPO_ROOT"
+  for token in \
+    'docs/specs/NNNN-<feature>.md' \
+    '.super-exec/NNNN' \
+    'MMMM' \
+    'plan.md' \
+    'handoff.md'
+  do
+    # Fixed-string so plan-<plan-name>.md / handoff-<plan-name>.md do not match.
+    grep -rFn --exclude-dir=se-config -- "$token" plugin/skills 2>/dev/null || true
+  done
+) >>"$straggler_hits"
+
+if [ -s "$straggler_hits" ]; then
+  fail "v0 path tokens remain in plugin/skills (excl. se-config):"
+  sed 's/^/    /' "$straggler_hits"
+else
+  pass "no v0 path tokens in plugin/skills outside se-config"
+fi
+rm -f "$straggler_hits"
+
+using_skill="${REPO_ROOT}/plugin/skills/using-super-exec/SKILL.md"
+if [ ! -f "$using_skill" ]; then
+  fail "using-super-exec SKILL.md missing"
+else
+  missing_cfg=()
+  for phrase in '/se-config' '/se-get-config' '/se-slug-naming'; do
+    if ! grep -qF -- "$phrase" "$using_skill" 2>/dev/null; then
+      missing_cfg+=("$phrase")
+    fi
+  done
+  if [ "${#missing_cfg[@]}" -eq 0 ]; then
+    pass "using-super-exec SKILL mentions /se-config, /se-get-config, /se-slug-naming"
+  else
+    fail "using-super-exec SKILL missing: ${missing_cfg[*]}"
+  fi
+fi
+
 echo ""
 echo "========================================"
 total=$((PASS + FAIL))

@@ -39,14 +39,14 @@ Run after the feature slug is stable, before writing the spec file.
 Run only after the user approves the already-written spec and the next action is committing artifacts.
 
 - **Re-check current branch.** On the confirmed branch → continue. On any other branch (protected or not) → switch/create before committing artifacts. Do not commit approved spec changes on a non-matching branch.
-- **Inspect dirty state before switching.** Approved review artifacts (`docs/specs/`, `CONTEXT.md`, ADRs) are expected dirty. Unrelated files dirty too → surface them briefly, state they won't be staged or committed by `/se-commit`. Don't require a clean tree to proceed.
+- **Inspect dirty state before switching.** Approved review artifacts (`docs/specs/` OR `.super-exec/specs/`, plus `CONTEXT.md`, ADRs) are expected dirty. Unrelated files dirty too → surface them briefly, state they won't be staged or committed by `/se-commit`. Don't require a clean tree to proceed.
 - **Fetch + prune.** Run `git fetch --all --prune`. Don't skip this even on a clean tree.
 - **Detect the base branch.** Preferred base from Phase A/B still valid → use it. Else check whether `origin/develop` exists (`git ls-remote --exit-code --heads origin develop`): exists → use `origin/develop`, else fall back to `origin/main`.
 - **Switch or create the branch.** Local branch `<confirmed-name>` exists → run `git checkout <confirmed-name>`. Else → run `git checkout -b <confirmed-name> <base>^0` (for example, `git checkout -b intcomp-1234-new-banner origin/develop^0`). The `^0` suffix detaches from the remote-tracking ref so no upstream is set; the upstream is established on first push. Do not set `--track`.
 - **If checkout would overwrite or conflict with any uncommitted change, stop and ask.** Never discard, stash, or rewrite the user's/spec changes silently. Present the conflicting paths and recommend the smallest safe recovery:
   - Current HEAD is already the intended base (or the user accepts the base deviation) → create the confirmed branch from the current HEAD so the approved uncommitted review artifacts stay in place.
   - Otherwise → ask the user to resolve the working-tree conflict manually or choose a different branch/base; do not proceed to commit until the confirmed branch contains the approved files.
-- **Then commit artifacts.** The approved `docs/specs/`, `CONTEXT.md`, or ADR files should already exist as uncommitted review artifacts. Only after this phase succeeds → `se-discuss` calls `/se-commit`.
+- **Then commit artifacts.** The approved review artifacts under `docs/specs/` / `.super-exec/specs/`, plus any `CONTEXT.md` or ADR files, should already exist as uncommitted review artifacts. Only after this phase succeeds → `se-discuss` calls `/se-commit` (for paths whose root is committed).
 
 ---
 
@@ -86,7 +86,7 @@ Use only when neither (a) nor (b) applies.
 | "I'll block the first interview question until branch context finishes." | Don't wait. Start Phase A in the background, keep interviewing. |
 | "I'll ask for the ticket before I know what the task is." | Defer ticket prompting to Phase B unless the ticket is needed to understand the first request. |
 | "The user confirmed the branch in Phase B, but I'll ask again after approval." | Don't ask again unless facts changed, branch creation failed, or checkout conflicts. Phase B confirmation + spec approval authorizes Phase C. |
-| "I'll hide the spec draft in `.super-exec/` until approval." | Wrong review surface. Write the uncommitted spec in `docs/specs/` so the user reviews the actual file; only the commit waits for Phase C. |
+| "I'll hide the spec draft in `.super-exec/` until approval." | Wrong. The spec is written to its CONFIGURED root (`docs/specs/` when committed, `.super-exec/specs/` when local per `commitSpec`), and THAT file is the review surface — do not relocate or stash it elsewhere to dodge review. Only the commit (when the root is `docs/specs/`) waits for Phase C. |
 | "There are unrelated dirty files, so I need to clean/stash them before switching." | Don't mutate unrelated work. Surface it, carry it if git allows, rely on `/se-commit` staging isolation so only approved artifact paths are committed. |
 | "Checkout conflicts with dirty files, so I'll stash or overwrite to get unstuck." | Stop and ask. Uncommitted work may be the user's or the approved review artifact; never stash, discard, or rewrite it without explicit user direction. |
 | "I'll branch off `main` — it's the safe default." | Auto-detect first. Branch off `origin/develop` if it exists; fall back to `main` only when `develop` is absent. |

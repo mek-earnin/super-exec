@@ -13,7 +13,7 @@ status: pending
 - [ ] Final review / PR decision
 
 ## Goal
-<Plan goal in 1-3 sentences. Spec: `docs/specs/NNNN-<feature>.md`>
+<Plan goal in 1-3 sentences. Spec: `<root>/[<app>/]<feature>/spec-<feature>.md`>
 
 ## Architecture
 <Components and responsibilities.>

@@ -1,4 +1,10 @@
+---
+Status: superseded by config-driven-artifact-placement
+---
+
 # Plans are local-only; specs are the shared contract
+
+> **Superseded (super-exec v1).** This ADR fixed one layout — spec committed to `docs/specs/`, plan gitignored under `.super-exec/`, both carrying a running `NNNN-` number. v1 replaces that with **config-driven placement** (`se-config` `commitSpec`/`commitPlan`), **symmetric roots** (`docs/specs/` ↔ `.super-exec/specs/`), and **slug-only identity** — see `config-driven-artifact-placement`. The text below is kept as history; the local-only default and the `.super-exec/`-out-of-git mechanism still apply whenever a spec or plan resolves to the local root.
 
 The spec for a feature is committed to `docs/specs/NNNN-<feature>.md` and is the durable, team-shared contract. `NNNN` is the next available four-digit number in that specs directory, matching the ADR convention. Plans live gitignored under `.super-exec/NNNN-<feature>/<YYYY-MM-DD>-<plan-name>/` — the plan directory reuses the spec's full name (the `NNNN` number prefix included) so a local plan folder maps to its governing spec at a glance — and are per-effort scaffolding — one feature has many plans over time (≈ one plan per implementation effort per PR).
 

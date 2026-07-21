@@ -1,6 +1,6 @@
 {
   "tool_input": {
-    "file_path": "docs/specs/payment-retry/spec-payment-retry.md",
+    "file_path": ".super-exec/specs/payment-retry/spec-payment-retry.md",
     "content": "# Payment retry\n\n## Behavior / Requirements\n\nRetries must be durable.\n\n```ts\nexport const retry = () => {};\n```\n"
   }
 }

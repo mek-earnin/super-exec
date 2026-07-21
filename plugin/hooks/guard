@@ -57,8 +57,9 @@ fi
 
 # Extract fields via node. Outputs SOH-separated:
 #   <command>\x01<agentId>\x01<cwd>\x01<isSpecCode>
-# isSpecCode = "1" when this is a write to a docs/specs/*.md file whose content
-# contains a fenced code block (```), else "0". Detection is done in node (over
+# isSpecCode = "1" when this is a write to a spec file (spec-*.md under
+# docs/specs/ or .super-exec/specs/) whose content contains a fenced code block
+# (```), else "0". Detection is done in node (over
 # tool_input file_path + content/new_string/edits) so only a boolean crosses
 # into bash — the file content itself never enters a shell variable.
 parsed=$(printf '%s' "$payload" | node -e "
@@ -80,7 +81,11 @@ parsed=$(printf '%s' "$payload" | node -e "
       if (typeof ti.content === 'string') content += ti.content;
       if (typeof ti.new_string === 'string') content += '\n' + ti.new_string;
       if (Array.isArray(ti.edits)) content += '\n' + ti.edits.map(e => (e && e.new_string) || '').join('\n');
-      const isSpecPath = /(^|\/)docs\/specs\//.test(filePath) && /\.md$/.test(filePath);
+      // spec file = spec-<feature>.md under docs/specs/ OR .super-exec/specs/;
+      // narrow to the spec FILE so plan-/handoff- files (which hold code) skip N3.
+      const inSpecRoot = /(^|\/)(docs\/specs|\.super-exec\/specs)\//.test(filePath);
+      const isSpecFile = /(^|\/)spec-[^/]+\.md$/.test(filePath);
+      const isSpecPath = inSpecRoot && isSpecFile;
       const hasCodeFence = content.indexOf('\`\`\`') !== -1;
       const isSpecCode = (isSpecPath && hasCodeFence) ? '1' : '0';
       // Use a delimiter unlikely to appear in a command string
@@ -166,8 +171,9 @@ if [ "$HARNESS" = "cc" ] && [ -n "$agent_id" ]; then
   isSubagent=true
 fi
 
-# isSpecWrite: a write to a docs/specs/*.md file carrying a fenced code block
-# (computed in the node parser above; "1" => true).
+# isSpecWrite: a write to a spec file (spec-*.md under docs/specs/ or
+# .super-exec/specs/) carrying a fenced code block (computed in the node parser
+# above; "1" => true).
 isSpecWrite=false
 if [ "$is_spec_code" = "1" ]; then
   isSpecWrite=true
@@ -201,13 +207,13 @@ if [ "$active" = false ]; then
   exit 0
 fi
 
-# N3: writing fenced code into a spec under docs/specs/ → nudge (CC only).
-# Fires for the controller AND subagents — code in a spec is wrong wherever it
-# is written, so this is NOT gated on isSubagent. Cursor exposes no generic
-# pre-tool (file-write) event, so on Cursor this degrades to skill-prose
-# discipline (no nudge emitted).
+# N3: writing fenced code into a spec file (spec-*.md under docs/specs/ or
+# .super-exec/specs/) → nudge (CC only). Fires for the controller AND subagents
+# — code in a spec is wrong wherever it is written, so this is NOT gated on
+# isSubagent. Cursor exposes no generic pre-tool (file-write) event, so on
+# Cursor this degrades to skill-prose discipline (no nudge emitted).
 if [ "$HARNESS" = "cc" ] && [ "$isSpecWrite" = true ]; then
-  n3_nudge="[super-exec N3] You are writing fenced code into a spec under docs/specs/. A spec is WHAT-only — high-level goals, requirements, and intentions, never code. Move implementation/code to the plan (.super-exec/NNNN-<feature>/<plan-dir>/plan.md) and keep the spec to behavior and decisions. Update the spec only when a documented decision changes."
+  n3_nudge="[super-exec N3] You are writing fenced code into a spec (spec-<feature>.md under docs/specs/ or .super-exec/specs/). A spec is WHAT-only — high-level goals, requirements, and intentions, never code. Move implementation/code to the plan (<root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md) and keep the spec to behavior and decisions. Update the spec only when a documented decision changes."
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","additionalContext":"%s"}}\n' \
     "$n3_nudge"
   exit 0

@@ -3,7 +3,7 @@
 #
 # Keep super-exec's local-only working dir (.super-exec/) out of git via the
 # repo-local, UNCOMMITTED .git/info/exclude — never the team-shared .gitignore
-# (ADR 0002). Idempotent, a no-op outside a git repo, and it never touches
+# (ADR local-only-plans-specs-are-the-shared-contract). Idempotent, a no-op outside a git repo, and it never touches
 # .gitignore. Always exits 0 so callers can run it unconditionally at session
 # activation.
 #

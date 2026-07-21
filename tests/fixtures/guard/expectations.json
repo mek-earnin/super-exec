@@ -134,7 +134,7 @@
       "notes": "Cursor has no allow-path context injection. N1/N2 nudges degrade to plain allow. The harness sets CURSOR_PROJECT_DIR and CURSOR_PLUGIN_ROOT."
     },
     "cc-specwrite-code-active-controller.json": {
-      "description": "CC: write fenced code into docs/specs/*.md + active + controller → allow + N3 nudge",
+      "description": "CC: write fenced code into a spec file (spec-*.md) under docs/specs/ + active + controller → allow + N3 nudge",
       "harness": "cc",
       "markers": {
         "active": true,
@@ -146,7 +146,7 @@
       "notes": "Spec write whose content contains a code fence. A spec is WHAT-only — nudge to move implementation/code to the plan."
     },
     "cc-specwrite-code-active-subagent.json": {
-      "description": "CC: write fenced code into docs/specs/*.md + active + subagent → allow + N3 nudge",
+      "description": "CC: write fenced code into a spec file (spec-*.md) under docs/specs/ + active + subagent → allow + N3 nudge",
       "harness": "cc",
       "markers": {
         "active": true,
@@ -158,7 +158,7 @@
       "notes": "N3 is NOT gated on agent_id — it fires for subagents too. A subagent writing code into a spec gets the same nudge."
     },
     "cc-specwrite-nocode-active-controller.json": {
-      "description": "CC: write spec under docs/specs/*.md with NO code fence + active + controller → allow, NO nudge",
+      "description": "CC: write spec under a spec file (spec-*.md) under docs/specs/ with NO code fence + active + controller → allow, NO nudge",
       "harness": "cc",
       "markers": {
         "active": true,
@@ -170,7 +170,7 @@
       "notes": "Spec write without a fenced code block. N3 only fires when the content contains a code fence — no fence, no nudge."
     },
     "cc-specwrite-code-no-markers.json": {
-      "description": "CC: write fenced code into docs/specs/*.md + NO markers → allow silently (plugin inert)",
+      "description": "CC: write fenced code into a spec file (spec-*.md) under docs/specs/ + NO markers → allow silently (plugin inert)",
       "harness": "cc",
       "markers": {
         "active": false,
@@ -191,10 +191,10 @@
       "expect": "allow",
       "nudge": "none",
       "failClosed": false,
-      "notes": "Only writes under docs/specs/*.md trigger N3. Code fences in normal source files are fine — no nudge."
+      "notes": "Only writes to a spec file (spec-*.md) under docs/specs/ or .super-exec/specs/ trigger N3. Code fences in normal source files or plan files are fine — no nudge."
     },
     "cursor-specwrite-code-active.json": {
-      "description": "Cursor: write fenced code into docs/specs/*.md + active → allow (N3 degrades to prose on Cursor)",
+      "description": "Cursor: write fenced code into a spec file (spec-*.md) under docs/specs/ + active → allow (N3 degrades to prose on Cursor)",
       "harness": "cursor",
       "markers": {
         "active": true,
@@ -204,6 +204,24 @@
       "nudge": "none",
       "failClosed": false,
       "notes": "Cursor has no generic pre-file hook, so N3 cannot fire. The guard falls through to a silent allow; the nudge degrades to prose."
+    },
+    "cc-specwrite-code-active-controller-localroot.json": {
+      "description": "CC: write fenced code into a spec-*.md under .super-exec/specs/ + active + controller → allow + N3 nudge",
+      "harness": "cc",
+      "markers": { "active": true, "gate-open": false },
+      "expect": "allow",
+      "nudge": "n3",
+      "failClosed": false,
+      "notes": "N3 fires for spec files under BOTH roots. The local .super-exec/specs/ root must be detected exactly like docs/specs/."
+    },
+    "cc-planwrite-code-active-controller.json": {
+      "description": "CC: write fenced code into a plan-*.md under docs/specs/.../plans/ + active + controller → allow, NO nudge",
+      "harness": "cc",
+      "markers": { "active": true, "gate-open": false },
+      "expect": "allow",
+      "nudge": "none",
+      "failClosed": false,
+      "notes": "Plans legitimately hold code. N3 is narrowed to the spec FILE (spec-*.md), so a plan-<name>.md under a spec root must NOT trigger the nudge — this is the key regression guard for the v1 narrowing."
     }
   }
 }
