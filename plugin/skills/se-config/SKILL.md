@@ -1,6 +1,7 @@
 ---
 name: se-config
 description: User-facing command to print, write, and migrate tiered se-config — inspect effective/local/user preferences for commit/placement/review/PR, and run the manual v0→v1 artifact migration. Model invocation disabled; humans invoke /se-config only.
+argument-hint: "[print | set <local|user> <key> <value> | migrate [--apply]]"
 disable-model-invocation: true
 ---
 
