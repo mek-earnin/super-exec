@@ -14,9 +14,9 @@
       "default": "ask"
     },
     "commitPlan": {
-      "description": "Whether new plans are committed under docs/specs/ (true), kept local under .super-exec/specs/ (false), or prompted at write time (ask).",
-      "enum": [true, false, "ask"],
-      "default": false
+      "description": "Whether a plan's commit root inherits its spec's root (inheritSpec), is kept local under .super-exec/specs/ (false), or prompted only when the spec was committed (ask).",
+      "enum": ["inheritSpec", false, "ask"],
+      "default": "ask"
     },
     "humanReviewBeforeCheckpointCommit": {
       "description": "Whether to require human review before each checkpoint commit (true/false), or prompt at /se-exec start (ask).",

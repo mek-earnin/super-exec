@@ -46,8 +46,25 @@ const PLAN_DIR_RE = /^(\d{4}-\d{2}-\d{2})-(.+)$/;
 const SPEC_FILE_RE = /^(\d{4})-(.+)\.md$/;
 const ADR_FILE_RE = /^(\d{4})-(.+)\.md$/;
 
-function isAllowed(value) {
-  return value === true || value === false || value === 'ask';
+/**
+ * Per-key allowed value sets (match se-config.schema.json enums).
+ * commitPlan is the only key whose allowed set differs from the rest.
+ */
+const ALLOWED_VALUES = {
+  commitSpec: [true, false, 'ask'],
+  commitPlan: ['inheritSpec', false, 'ask'],
+  humanReviewBeforeCheckpointCommit: [true, false, 'ask'],
+  autoCreatePr: [true, false, 'ask'],
+};
+
+function isAllowed(key, value) {
+  return ALLOWED_VALUES[key].some((allowed) => Object.is(allowed, value));
+}
+
+function formatAllowedValues(key) {
+  return ALLOWED_VALUES[key]
+    .map((v) => (v === true || v === false ? String(v) : JSON.stringify(v)))
+    .join(' | ');
 }
 
 function usage() {
@@ -58,7 +75,8 @@ function usage() {
     '  se-config-cli migrate [--apply]',
     '',
     'Keys: ' + CONFIG_KEYS.join(', '),
-    'Values: true | false | ask',
+    'Values (per key):',
+    ...CONFIG_KEYS.map((key) => '  ' + key + ': ' + formatAllowedValues(key)),
     '',
     'migrate: dry-run preview by default; --apply executes moves + pointer rewrites.',
   ].join('\n');
@@ -131,7 +149,7 @@ function inspectTier(filePath) {
   const invalidKeys = [];
   for (const key of CONFIG_KEYS) {
     if (!Object.prototype.hasOwnProperty.call(parsed, key)) continue;
-    if (!isAllowed(parsed[key])) {
+    if (!isAllowed(key, parsed[key])) {
       invalidKeys.push({ key, value: parsed[key] });
     }
   }
@@ -169,7 +187,7 @@ function renderTier(name, filePath, info) {
     for (const { key, value } of info.invalidKeys) {
       lines.push(
         `diagnostic: invalid value for "${key}": ${JSON.stringify(value)} ` +
-          '(allowed: true | false | "ask") — this key is ignored by merge'
+          `(allowed: ${formatAllowedValues(key)}) — this key is ignored by merge`
       );
     }
   }
@@ -200,13 +218,16 @@ function cmdPrint() {
 }
 
 /**
- * Parse argv token into a schema value.
- * Accepts only the strings "true", "false", "ask".
+ * Parse argv token into a schema value. Token parsing is shared across all
+ * keys; per-key validity (which of these a given key actually allows) is
+ * enforced separately in cmdSet via isAllowed().
+ * Accepts only the strings "true", "false", "ask", "inheritSpec".
  */
 function parseSetValue(token) {
   if (token === 'true') return { ok: true, value: true };
   if (token === 'false') return { ok: true, value: false };
   if (token === 'ask') return { ok: true, value: 'ask' };
+  if (token === 'inheritSpec') return { ok: true, value: 'inheritSpec' };
   return { ok: false };
 }
 
@@ -246,11 +267,15 @@ function cmdSet(argv) {
   }
 
   const parsedValue = parseSetValue(valueToken);
-  if (!parsedValue.ok) {
+  if (!parsedValue.ok || !isAllowed(key, parsedValue.value)) {
     process.stderr.write(
       'Error: invalid value ' +
         JSON.stringify(valueToken) +
-        '. Allowed values: true | false | ask\n'
+        ' for key ' +
+        JSON.stringify(key) +
+        '. Allowed values: ' +
+        formatAllowedValues(key) +
+        '\n'
     );
     process.exit(1);
   }

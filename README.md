@@ -75,14 +75,14 @@ Most users start with `/se-discuss`, then follow the prompts. You can also descr
 
 ## Configuration & migrating to v1
 
-Artifact placement and two workflow gates are controlled by a small tiered config, `se-config`. Four keys, each `true`, `false`, or `"ask"`:
+Artifact placement and two workflow gates are controlled by a small tiered config, `se-config`. Four keys:
 
-| Key | Controls |
-|---|---|
-| `commitSpec` | Spec root — committed `docs/specs/` (team) vs. local `.super-exec/specs/`. |
-| `commitPlan` | Same choice for plans. |
-| `humanReviewBeforeCheckpointCommit` | Human approval before each task's checkpoint commit. |
-| `autoCreatePr` | Auto-open a PR when the build is done. |
+| Key | Controls | Values |
+|---|---|---|
+| `commitSpec` | Spec root — committed `docs/specs/` (team) vs. local `.super-exec/specs/`. | - `"ask"` (default) — prompt at spec-write time<br>- `true` — commit the spec under `docs/specs/`<br>- `false` — keep it local under `.super-exec/specs/` |
+| `commitPlan` | Plan root. | - `"ask"` (default) — prompt at plan-write time<br>- `false` — keep the plan local<br>- `"inheritSpec"` — follow the spec's root (never commits a plan whose spec is local) |
+| `humanReviewBeforeCheckpointCommit` | Human approval before each task's checkpoint commit. | - `"ask"` (default) — prompt at `/se-exec` start<br>- `true` — always require approval<br>- `false` — never require it |
+| `autoCreatePr` | Auto-open a PR when the build is done. | - `"ask"` (default) — prompt at `/se-exec` start<br>- `true` — always open a PR<br>- `false` — never open one |
 
 Values merge over three tiers: repo-local `.super-exec/se-config.local.json` > user `~/.super-exec/se-config.json` > shipped defaults. Manage them with `/se-config print` (the effective config plus any local and user overrides) and `/se-config set <local|user> <key> <value>`.
 

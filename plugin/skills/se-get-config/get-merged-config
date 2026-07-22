@@ -32,13 +32,24 @@ const CONFIG_KEYS = [
 /** Absolute last-resort defaults (match se-config.default.json / schema). */
 const EMBEDDED_DEFAULTS = {
   commitSpec: 'ask',
-  commitPlan: false,
+  commitPlan: 'ask',
   humanReviewBeforeCheckpointCommit: 'ask',
   autoCreatePr: 'ask',
 };
 
-function isAllowed(value) {
-  return value === true || value === false || value === 'ask';
+/**
+ * Per-key allowed value sets (match se-config.schema.json enums).
+ * commitPlan is the only key whose allowed set differs from the rest.
+ */
+const ALLOWED_VALUES = {
+  commitSpec: [true, false, 'ask'],
+  commitPlan: ['inheritSpec', false, 'ask'],
+  humanReviewBeforeCheckpointCommit: [true, false, 'ask'],
+  autoCreatePr: [true, false, 'ask'],
+};
+
+function isAllowed(key, value) {
+  return ALLOWED_VALUES[key].some((allowed) => Object.is(allowed, value));
 }
 
 function startDir() {
@@ -86,7 +97,7 @@ function readTier(filePath) {
   const out = {};
   for (const key of CONFIG_KEYS) {
     if (!Object.prototype.hasOwnProperty.call(parsed, key)) continue;
-    if (isAllowed(parsed[key])) {
+    if (isAllowed(key, parsed[key])) {
       out[key] = parsed[key];
     }
     // invalid value → treat key as absent (sibling keys still apply)

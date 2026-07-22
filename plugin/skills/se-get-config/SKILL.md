@@ -18,7 +18,7 @@ One compact JSON object on stdout with exactly these keys (deterministic order):
 {"commitSpec":…,"commitPlan":…,"humanReviewBeforeCheckpointCommit":…,"autoCreatePr":…}
 ```
 
-Each value is exactly `true`, `false`, or `"ask"`. Every key always resolves — never omit a key, never print diagnostics.
+Each value is exactly `true`, `false`, or `"ask"` — except `commitPlan`, whose allowed set is `"inheritSpec"`, `false`, or `"ask"` (no `true`). Every key always resolves — never omit a key, never print diagnostics.
 
 ## Lenient merge
 
@@ -32,7 +32,7 @@ Per key: use the highest-priority tier that supplies a **valid** value; otherwis
 
 - Malformed JSON → skip the **entire** tier.
 - Well-formed file with an invalid value for one key → treat that key as absent; valid sibling keys still apply.
-- Allowed values exactly `true` | `false` | `"ask"` — no coercion (`"true"`, `1`, etc. are invalid).
+- Allowed values exactly `true` | `false` | `"ask"` for `commitSpec`, `humanReviewBeforeCheckpointCommit`, `autoCreatePr`; `commitPlan` instead uses `"inheritSpec"` | `false` | `"ask"` (no `true`) — no coercion (`"true"`, `1`, etc. are invalid).
 - Missing tier files are fine (treated as absent).
 
 Repo root resolution mirrors `branch-context`: `CLAUDE_PROJECT_DIR` → `CURSOR_PROJECT_DIR` → cwd, then git toplevel when available.

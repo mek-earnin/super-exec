@@ -1628,20 +1628,25 @@ const CONFIG_KEYS = [
   'autoCreatePr',
 ];
 const ALLOWED = [true, false, 'ask'];
+const ALLOWED_COMMIT_PLAN = ['inheritSpec', false, 'ask'];
 const DEFAULTS = {
   commitSpec: 'ask',
-  commitPlan: false,
+  commitPlan: 'ask',
   humanReviewBeforeCheckpointCommit: 'ask',
   autoCreatePr: 'ask',
 };
+
+function allowedFor(key) {
+  return key === 'commitPlan' ? ALLOWED_COMMIT_PLAN : ALLOWED;
+}
 
 function sameSet(a, b) {
   return a.length === b.length && a.every((x) => b.includes(x));
 }
 
-function sameEnum(actual) {
-  if (!Array.isArray(actual) || actual.length !== ALLOWED.length) return false;
-  return ALLOWED.every((v) => actual.some((x) => Object.is(x, v)));
+function sameEnum(actual, allowed) {
+  if (!Array.isArray(actual) || actual.length !== allowed.length) return false;
+  return allowed.every((v) => actual.some((x) => Object.is(x, v)));
 }
 
 let schema;
@@ -1677,8 +1682,9 @@ if (schema) {
         problems.push(`schema missing property: ${key}`);
         continue;
       }
-      if (!sameEnum(prop.enum)) {
-        problems.push(`schema ${key}.enum expected [true, false, "ask"], got ${JSON.stringify(prop.enum)}`);
+      const allowed = allowedFor(key);
+      if (!sameEnum(prop.enum, allowed)) {
+        problems.push(`schema ${key}.enum expected ${JSON.stringify(allowed)}, got ${JSON.stringify(prop.enum)}`);
       }
       if (!Object.is(prop.default, DEFAULTS[key])) {
         problems.push(`schema ${key}.default expected ${JSON.stringify(DEFAULTS[key])}, got ${JSON.stringify(prop.default)}`);
@@ -1786,10 +1792,10 @@ else
   mkdir -p "$gmcrepo" "$gmchome"
   ( cd "$gmcrepo" && git init -q ) 2>/dev/null || true
 
-  EXPECT_DEFAULTS='{"commitSpec":"ask","commitPlan":false,"humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":"ask"}'
-  EXPECT_PRECEDENCE='{"commitSpec":true,"commitPlan":true,"humanReviewBeforeCheckpointCommit":false,"autoCreatePr":"ask"}'
-  EXPECT_MALFORMED='{"commitSpec":false,"commitPlan":false,"humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":"ask"}'
-  EXPECT_INVALID='{"commitSpec":true,"commitPlan":false,"humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":false}'
+  EXPECT_DEFAULTS='{"commitSpec":"ask","commitPlan":"ask","humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":"ask"}'
+  EXPECT_PRECEDENCE='{"commitSpec":true,"commitPlan":"inheritSpec","humanReviewBeforeCheckpointCommit":false,"autoCreatePr":"ask"}'
+  EXPECT_MALFORMED='{"commitSpec":false,"commitPlan":"ask","humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":"ask"}'
+  EXPECT_INVALID='{"commitSpec":true,"commitPlan":"ask","humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":false}'
 
   run_gmc() {
     # $1 = HOME, $2 = CLAUDE_PROJECT_DIR (empty to unset), optional $3 = CURSOR_PROJECT_DIR, $4 = cwd
@@ -1821,11 +1827,12 @@ else
   fi
 
   # --- local > user > default precedence ---
-  # local: commitSpec/commitPlan; user: humanReview (and lower commit* overridden);
+  # local: commitSpec/commitPlan (commitPlan:"inheritSpec" — valid under new contract);
+  # user: humanReview (and lower commit* overridden);
   # autoCreatePr absent in both → default "ask"
   mkdir -p "${gmcrepo}/.super-exec" "${gmchome}/.super-exec"
   cat >"${gmcrepo}/.super-exec/se-config.local.json" <<'EOF'
-{"commitSpec":true,"commitPlan":true}
+{"commitSpec":true,"commitPlan":"inheritSpec"}
 EOF
   cat >"${gmchome}/.super-exec/se-config.json" <<'EOF'
 {"commitSpec":false,"commitPlan":false,"humanReviewBeforeCheckpointCommit":false}
@@ -1866,6 +1873,8 @@ EOF
   otherrepo="${gmctmp}/other"
   mkdir -p "${otherrepo}/.super-exec"
   ( cd "$otherrepo" && git init -q ) 2>/dev/null || true
+  # otherrepo's commitPlan:true is legacy — now invalid → treated as absent →
+  # no lower tier provides it (home tier removed above) → "ask" default
   cat >"${otherrepo}/.super-exec/se-config.local.json" <<'EOF'
 {"commitSpec":false,"commitPlan":true,"humanReviewBeforeCheckpointCommit":true,"autoCreatePr":false}
 EOF
@@ -1873,8 +1882,8 @@ EOF
   cat >"${gmcrepo}/.super-exec/se-config.local.json" <<'EOF'
 {"commitSpec":true}
 EOF
-  EXPECT_CLAUDE='{"commitSpec":true,"commitPlan":false,"humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":"ask"}'
-  EXPECT_OTHER='{"commitSpec":false,"commitPlan":true,"humanReviewBeforeCheckpointCommit":true,"autoCreatePr":false}'
+  EXPECT_CLAUDE='{"commitSpec":true,"commitPlan":"ask","humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":"ask"}'
+  EXPECT_OTHER='{"commitSpec":false,"commitPlan":"ask","humanReviewBeforeCheckpointCommit":true,"autoCreatePr":false}'
 
   out=$(run_gmc "$gmchome" "$gmcrepo" "$otherrepo" "$otherrepo" || true)
   if [ "$out" = "$EXPECT_CLAUDE" ]; then
@@ -1895,6 +1904,83 @@ EOF
     pass "get-merged-config falls back to cwd when project env unset"
   else
     fail "get-merged-config cwd fallback expected ${EXPECT_CLAUDE} got ${out}"
+  fi
+
+  # --- commitPlan new contract: "inheritSpec" | false | "ask" (default "ask") ---
+  # Home tier stays absent (removed above) for the rest of these cases so
+  # commitPlan resolution is driven solely by the local tier / embedded default.
+
+  # (a) commitPlan:"inheritSpec" is a valid value and merges through unchanged
+  cat >"${gmcrepo}/.super-exec/se-config.local.json" <<'EOF'
+{"commitPlan":"inheritSpec"}
+EOF
+  EXPECT_INHERITSPEC='{"commitSpec":"ask","commitPlan":"inheritSpec","humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":"ask"}'
+  out=$(run_gmc "$gmchome" "$gmcrepo" || true)
+  if [ "$out" = "$EXPECT_INHERITSPEC" ]; then
+    pass "get-merged-config commitPlan inheritSpec merges through unchanged"
+  else
+    fail "get-merged-config commitPlan inheritSpec expected ${EXPECT_INHERITSPEC} got ${out}"
+  fi
+
+  # (b) legacy commitPlan:true is now invalid → treated as absent → "ask" default
+  cat >"${gmcrepo}/.super-exec/se-config.local.json" <<'EOF'
+{"commitPlan":true}
+EOF
+  EXPECT_LEGACY_TRUE='{"commitSpec":"ask","commitPlan":"ask","humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":"ask"}'
+  out=$(run_gmc "$gmchome" "$gmcrepo" || true)
+  if [ "$out" = "$EXPECT_LEGACY_TRUE" ]; then
+    pass "get-merged-config legacy commitPlan:true is invalid → falls to ask default"
+  else
+    fail "get-merged-config legacy commitPlan:true expected ${EXPECT_LEGACY_TRUE} got ${out}"
+  fi
+
+  # (c) commitPlan:"ask" is still valid and merges through
+  cat >"${gmcrepo}/.super-exec/se-config.local.json" <<'EOF'
+{"commitPlan":"ask"}
+EOF
+  EXPECT_COMMITPLAN_ASK='{"commitSpec":"ask","commitPlan":"ask","humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":"ask"}'
+  out=$(run_gmc "$gmchome" "$gmcrepo" || true)
+  if [ "$out" = "$EXPECT_COMMITPLAN_ASK" ]; then
+    pass "get-merged-config commitPlan ask still valid, merges through"
+  else
+    fail "get-merged-config commitPlan ask expected ${EXPECT_COMMITPLAN_ASK} got ${out}"
+  fi
+
+  # (d) embedded default for commitPlan is "ask" when unset in all tiers
+  cat >"${gmcrepo}/.super-exec/se-config.local.json" <<'EOF'
+{"commitSpec":true,"autoCreatePr":false}
+EOF
+  EXPECT_COMMITPLAN_UNSET='{"commitSpec":true,"commitPlan":"ask","humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":false}'
+  out=$(run_gmc "$gmchome" "$gmcrepo" || true)
+  if [ "$out" = "$EXPECT_COMMITPLAN_UNSET" ]; then
+    pass "get-merged-config commitPlan defaults to ask when unset in all tiers"
+  else
+    fail "get-merged-config commitPlan unset expected ${EXPECT_COMMITPLAN_UNSET} got ${out}"
+  fi
+
+  # (e) sanity: the other three keys still accept true/false/"ask" unchanged
+  # (commitSpec:true merges through; humanReview:false and autoCreatePr:"ask" too)
+  cat >"${gmcrepo}/.super-exec/se-config.local.json" <<'EOF'
+{"commitSpec":true,"humanReviewBeforeCheckpointCommit":false,"autoCreatePr":"ask"}
+EOF
+  EXPECT_OTHER_KEYS_SANITY='{"commitSpec":true,"commitPlan":"ask","humanReviewBeforeCheckpointCommit":false,"autoCreatePr":"ask"}'
+  out=$(run_gmc "$gmchome" "$gmcrepo" || true)
+  if [ "$out" = "$EXPECT_OTHER_KEYS_SANITY" ]; then
+    pass "get-merged-config other three keys still accept true/false/ask (commitSpec:true merges through)"
+  else
+    fail "get-merged-config other-keys sanity expected ${EXPECT_OTHER_KEYS_SANITY} got ${out}"
+  fi
+
+  # (f) commitPlan:false is a valid first-class value and merges through as false
+  cat >"${gmcrepo}/.super-exec/se-config.local.json" <<'EOF'
+{"commitPlan":false}
+EOF
+  EXPECT_COMMITPLAN_FALSE='{"commitSpec":"ask","commitPlan":false,"humanReviewBeforeCheckpointCommit":"ask","autoCreatePr":"ask"}'
+  out=$(run_gmc "$gmchome" "$gmcrepo" || true)
+  if [ "$out" = "$EXPECT_COMMITPLAN_FALSE" ]; then
+    pass "get-merged-config commitPlan false is valid, merges through as false"
+  else
+    fail "get-merged-config commitPlan false expected ${EXPECT_COMMITPLAN_FALSE} got ${out}"
   fi
 
   rm -rf "$gmctmp"

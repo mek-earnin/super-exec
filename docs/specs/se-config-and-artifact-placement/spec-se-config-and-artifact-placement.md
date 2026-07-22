@@ -11,7 +11,7 @@ Teams differ: some want plans committed for shared review, some want specs kept 
 
 ## Goals
 - Introduce a tiered `se-config.json` (local repo → user home → embedded plugin default) that controls commit/placement and review/PR behavior.
-- Provide four config keys — `commitSpec`, `commitPlan`, `humanReviewBeforeCheckpointCommit`, `autoCreatePr` — each accepting `true | false | "ask"`.
+- Provide four config keys — `commitSpec`, `commitPlan`, `humanReviewBeforeCheckpointCommit`, `autoCreatePr` — controlling commit/placement and review/PR behavior.
 - Parse, validate, and merge config deterministically via a script that any skill can call in real time.
 - Ship a user-facing `/se-config` command to print, write, and migrate config, and a shared internal `/se-get-config` that returns the merged effective config for skills to consume.
 - Adopt a symmetric artifact-placement scheme where commit status changes ONLY the root (`docs/specs/` vs `.super-exec/specs/`); the sub-structure is identical.
@@ -41,7 +41,7 @@ Teams differ: some want plans committed for shared review, some want specs kept 
   | Key | Values | Default |
   |---|---|---|
   | `commitSpec` | `true` \| `false` \| `"ask"` | `"ask"` |
-  | `commitPlan` | `true` \| `false` \| `"ask"` | `false` |
+  | `commitPlan` | `"inheritSpec"` \| `false` \| `"ask"` | `"ask"` |
   | `humanReviewBeforeCheckpointCommit` | `true` \| `false` \| `"ask"` | `"ask"` |
   | `autoCreatePr` | `true` \| `false` \| `"ask"` | `"ask"` |
 
@@ -53,7 +53,12 @@ Teams differ: some want plans committed for shared review, some want specs kept 
 
 ### Meaning of each value
 - `commitSpec`: `true` → a new spec is committed (lives under `docs/`); `false` → a new spec is local (under `.super-exec/`); `"ask"` → prompt at spec-write time (during discuss), which decides both commit and root.
-- `commitPlan`: same semantics, decided at plan-write time (during plan).
+- `commitPlan`: decided at plan-write time (during plan), and resolves against the governing spec's on-disk root (the root `commitSpec` set when that spec was written):
+  - `"inheritSpec"` → the plan lands in the same root as its spec (committed spec → committed plan; local spec → local plan).
+  - `false` → the plan lands in the local root.
+  - `"ask"` (default) → the plan lands in the local root when the spec is local; when the spec is committed, the tool prompts the human to choose the plan's location, recommending local (a plan is usually a one-off for a single implementation, so it needn't be committed) with committing alongside the spec as the alternative.
+  - Invariant: a local spec always yields a local plan — every value above places a local spec's plan in the local root.
+  - Legacy `commitPlan: true` (from the earlier value set) is treated as absent per the merge rule above and falls through to the `"ask"` default. No migration rewrites it.
 - `humanReviewBeforeCheckpointCommit`: `true`/`false` fix the review-before-each-checkpoint-commit behavior; `"ask"` → prompt at `/se-exec` start (current behavior).
 - `autoCreatePr`: `true`/`false` fix PR auto-creation; `"ask"` → prompt at `/se-exec` start (current behavior).
 
@@ -72,7 +77,6 @@ Rules:
 - A spec/feature is identified by its `<feature>` slug ALONE — there are no running numbers anywhere in the layout. The slug is unique within a specs tree. Removing the shared numeric counter is deliberate: parallel agents in one worktree can never collide on a "next number".
 - Because commit status varies per artifact, any skill that locates or auto-discovers a spec/plan MUST scan BOTH roots (union), regardless of the current config value.
 - Ordering and dependencies between features are expressed via the spec's `Depends on:` header, not by a numeric sequence. Auto-discovery (e.g. se-plan) lists unplanned specs (those with no plan folder) and asks which to plan rather than picking a numeric "lowest".
-- `commitSpec` and `commitPlan` are independent; mixed states are allowed (e.g. a local spec with a committed plan).
 
 ### ADR placement (scoped by reach)
 - The ADR author routes by scope at write time: a general/global/cross-cutting decision is a **global ADR**; a decision that only concerns one feature is a **feature-specific ADR**.
@@ -135,10 +139,11 @@ Rules:
 
 ## Decisions
 - **Placement is config-driven, superseding the "local-only plans" ADR.** The local-only-plans ADR ("local-only plans; specs are the shared contract") fixed placement; v1 makes both spec and plan placement configurable. That ADR must be updated or superseded during planning.
-- **ADRs are scoped by reach.** Global decisions stay in `docs/adr/`; feature-specific decisions move under the spec folder and inherit the spec's root; both are slug-only. Existing ADRs are never auto-reclassified, since scope cannot be inferred (migration only strips their numbers, keeping them global).
+- **ADRs are scoped by reach.** Decisions differ in blast radius, so a cross-cutting one and a feature-local one should not share a home. Existing ADRs are not auto-reclassified because an old file's scope cannot be reliably inferred.
 - **Symmetric roots.** Committed and uncommitted layouts are identical except for the root prefix, keeping migration and cross-root lookup simple.
-- **No running numbers — slug-only identity.** Specs, feature ADRs, and global ADRs are identified by slug, never a running number. A shared numeric counter would force parallel agents in one worktree to contend for the "next number"; slugs remove that contention. Ordering/dependency is carried by the spec's `Depends on:` header, and auto-discovery lists unplanned specs and asks which to plan rather than picking a numeric lowest. (The `.super-exec/active` marker's single-session assumption is a separate concern, deferred.)
-- **Names are caveman-compressed, forward-only.** All author-chosen names follow the caveman-full drop logic (shared in `/se-slug-naming`) so slugs stay terse and uniform. It is a prose convention, not a script — the compression is a semantic author choice, unlike deterministic config parsing. Migration is number-strip only and never recompresses, to avoid churning stable pointers.
+- **No running numbers — slug-only identity.** A shared numeric counter would force parallel agents in one worktree to contend for the "next number"; slug-only identity removes that contention. (The `.super-exec/active` marker's single-session assumption is a separate concern, deferred.)
+- **Names are caveman-compressed, forward-only.** Compression is a semantic author choice, so it lives as a prose convention rather than a script (unlike deterministic config parsing). It is forward-only — migration never recompresses — to avoid churning stable pointers.
 - **Value changes never relocate existing files.** Config changes apply only to new artifacts; the only relocation tooling is the v0→v1 structural migration.
 - **Deterministic, script-based validation and merge.** Config parsing, validation, and merge live in a script rather than agent inference, for reproducibility across sessions and harnesses.
 - **`/se-get-config` is lenient; `/se-config` is diagnostic.** Internal consumers always receive a resolved merged result (bad input silently dropped to default); the human print path surfaces malformed or invalid input.
+- **`commitPlan` is derived from the spec, not independent.** A plan depends on its spec, so a committed plan over a local spec would strand teammates with a plan and no spec to read. Avoiding that is why `commitPlan` drops `true`, adds `"inheritSpec"`, and defaults to `"ask"` — no value can commit a plan whose spec is local. This supersedes the earlier "`commitSpec` and `commitPlan` are independent" stance.

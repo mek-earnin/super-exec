@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/mek-earnin/super-exec/main/plugin/skills/se-config/se-config.schema.json",
   "commitSpec": "ask",
-  "commitPlan": false,
+  "commitPlan": "ask",
   "humanReviewBeforeCheckpointCommit": "ask",
   "autoCreatePr": "ask"
 }

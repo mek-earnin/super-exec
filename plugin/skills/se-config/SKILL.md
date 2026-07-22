@@ -36,8 +36,8 @@ Practical sequence:
 
 Runs `@./se-config-cli set <local|user> <key> <value>`.
 
-- Keys: `commitSpec`, `commitPlan`, `humanReviewBeforeCheckpointCommit`, `autoCreatePr`
-- Values: `true` | `false` | `ask` (script writes JSON boolean or `"ask"`)
+- Keys: `commitSpec`, `humanReviewBeforeCheckpointCommit`, `autoCreatePr` — values `true` | `false` | `"ask"` (script writes JSON boolean or `"ask"`)
+- Key: `commitPlan` — values `"inheritSpec"` | `false` | `"ask"` (no `true`; script writes a JSON string or JSON `false`)
 - Target `default` is **not writable**
 - Creates the tier file (and parent dir) when missing and injects `$schema` pointing at the published schema URL
 - Preserves existing sibling keys on update
