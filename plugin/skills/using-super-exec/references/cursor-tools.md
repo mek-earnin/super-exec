@@ -12,13 +12,11 @@ super-exec names model **tiers** by family alias so they never go stale (see the
 
 | CC alias | Tier / role | Cursor |
 |---|---|---|
-| `opus` (non-fast) | strong — discuss interview, plan, arch-gate & deep review, impeccable-critique, verifier judgment, handoff authoring | Strongest available reasoning model at high reasoning effort — latest GPT (e.g. GPT-5.5, Extra High) **or** latest Opus (e.g. Opus 4.8, Extra High); if none selectable, fall back to Default / inherit (non-fast). |
-| `sonnet` (pinned) | mid — implementer / fixer | latest composer non-fast |
-| `haiku` | cheap — script-runner / runner / finder / investigator | latest composer non-fast |
+| `opus` (non-fast) | strong — discuss interview, plan, arch-gate & deep review, impeccable-critique, verifier judgment, handoff authoring | Strongest available reasoning model at high reasoning effort — latest GPT (e.g. gpt-5.6-sol, xhigh) **or** latest Opus (e.g. Opus 4.8, Extra High); if none selectable, fall back to Default / inherit (non-fast). |
+| `sonnet` (pinned) | mid — implementer / fixer | latest cursor-grok-* high (e.g. `cursor-grok-4.5-high`) |
+| `haiku` | cheap — script-runner / runner / finder / investigator | latest composer-* non-fast (e.g. `composer-2.5` non-fast) |
 
-> Model names above are illustrative (`e.g.`), not pinned — always pick the *latest* in each family. Strong tier wants best reasoning available; mid/cheap tiers want the non-fast Composer model.
-
-> **Pinned-to-Sonnet policy on Cursor.** CC pins the implementer/fixer to `sonnet` explicitly. Cursor's composer model selection is less granular, so the equivalent is "latest composer non-fast" and inheritance from the non-fast tier is acceptable.
+> Model names above are illustrative (`e.g.`), not pinned — always pick the *latest* in each family.
 
 ---
 
