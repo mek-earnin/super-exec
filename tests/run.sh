@@ -776,6 +776,19 @@ if [ -f "$discuss_skill" ]; then
   else
     fail "se-discuss SKILL missing /se-get-config consult for commitSpec"
   fi
+  if grep -qF 'Existing spec update' "$discuss_skill" 2>/dev/null \
+     && grep -qF 'Do NOT invoke `/se-get-config` for that spec' "$discuss_skill" 2>/dev/null \
+     && grep -qF 'Mixed multi-feature split' "$discuss_skill" 2>/dev/null; then
+    pass "se-discuss SKILL preserves existing spec roots without re-prompting"
+  else
+    fail "se-discuss SKILL must skip commitSpec placement prompts for existing spec updates"
+  fi
+  if grep -qF "spec's resolved on-disk root is \`docs/specs/\`" "$discuss_skill" 2>/dev/null \
+     && grep -qF 'commit only the specs whose resolved on-disk root is `docs/specs/`' "$discuss_skill" 2>/dev/null; then
+    pass "se-discuss SKILL commits approved specs by resolved on-disk root"
+  else
+    fail "se-discuss SKILL must commit approved specs by resolved on-disk root"
+  fi
   if grep -qF 'docs/specs/' "$discuss_skill" 2>/dev/null \
      && grep -qF '.super-exec/specs/' "$discuss_skill" 2>/dev/null; then
     pass "se-discuss SKILL mentions both roots docs/specs/ and .super-exec/specs/"
@@ -789,6 +802,14 @@ if [ -f "$discuss_skill" ]; then
   fi
 else
   fail "se-discuss SKILL.md missing"
+fi
+
+core_workflow_spec="${REPO_ROOT}/docs/specs/core-workflow/spec-core-workflow.md"
+if grep -qF 'without consulting config or re-prompting about placement' "$core_workflow_spec" 2>/dev/null \
+   && grep -qF 'commit every spec whose resolved on-disk root is `docs/specs/`' "$core_workflow_spec" 2>/dev/null; then
+  pass "core workflow preserves existing spec roots and commits by resolved root"
+else
+  fail "core workflow must preserve existing spec roots and commit by resolved root"
 fi
 
 # --- se-plan v1 placement (Task 7): config-driven root + slug-only plan path ---

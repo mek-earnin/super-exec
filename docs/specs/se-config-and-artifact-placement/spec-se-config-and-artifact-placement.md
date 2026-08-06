@@ -52,7 +52,7 @@ Teams differ: some want plans committed for shared review, some want specs kept 
 - Validation is deterministic and performed by a script, never by agent inference.
 
 ### Meaning of each value
-- `commitSpec`: `true` → a new spec is committed (lives under `docs/`); `false` → a new spec is local (under `.super-exec/`); `"ask"` → prompt at spec-write time (during discuss), which decides both commit and root.
+- `commitSpec`: applies only when creating a new spec. `true` → the new spec is committed (lives under `docs/`); `false` → the new spec is local (under `.super-exec/`); `"ask"` → prompt at new-spec write time (during discuss), which decides both commit and root. Updating an existing spec preserves its exact on-disk root and does not prompt again; only an explicit user request may move it between roots.
 - `commitPlan`: decided at plan-write time (during plan), and resolves against the governing spec's on-disk root (the root `commitSpec` set when that spec was written):
   - `"inheritSpec"` → the plan lands in the same root as its spec (committed spec → committed plan; local spec → local plan).
   - `false` → the plan lands in the local root.
