@@ -12,7 +12,7 @@ super-exec names model **tiers** by family alias so they never go stale (see the
 
 | CC alias | Tier / role | Cursor |
 |---|---|---|
-| `opus` (non-fast) | strong — discuss interview, plan, arch-gate & deep review, impeccable-critique, verifier judgment, handoff authoring | Strongest available reasoning model at high reasoning effort — latest GPT (e.g. gpt-5.6-sol, xhigh) **or** latest Opus (e.g. Opus 4.8, Extra High); if none selectable, fall back to Default / inherit (non-fast). |
+| `opus` (non-fast) | strong — discuss interview, plan, arch-gate & deep review, impeccable-critique, verifier judgment, handoff authoring | Strongest available reasoning model at high reasoning effort — latest GPT (e.g. gpt-5.6-sol, xhigh) **or** latest Opus (e.g. `opus-5`, Extra High); if none selectable, fall back to Default / inherit (non-fast). |
 | `sonnet` (pinned) | mid — implementer / fixer | latest cursor-grok-* high (e.g. `cursor-grok-4.5-high`) |
 | `haiku` | cheap — script-runner / runner / finder / investigator | latest composer-* non-fast (e.g. `composer-2.5` non-fast) |
 
