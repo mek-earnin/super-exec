@@ -19,6 +19,8 @@ super-exec must deliver approved behavior quickly without losing verification, r
 - Treating model recommendations or research concerns as user requirements without explicit approval.
 - Replacing real runtime proof with mocks, scripts, or lower-layer checks.
 - Requiring every implementation default or file-map detail as architecture contract.
+- Rewriting grill-with-docs or other skills that own `CONTEXT.md` / `CONTEXT-MAP.md`.
+- Auto-migrate or rewrite consumer `CONTEXT.md` / `CONTEXT-MAP.md`.
 
 ## Behavior / Requirements
 
@@ -31,6 +33,9 @@ super-exec must deliver approved behavior quickly without losing verification, r
 5. Interview converges when its frontier is empty and shared understanding is reached, or when user signals such as “proceed,” “implement,” or “stop asking.” Those signals end questioning under user authority. Only settled decisions become requested or approved requirements; unanswered nodes remain deferred or unapproved and are never inferred/defaulted into scope. It must not write a spec or adopt inferred decisions before that point. Stress testing exposes material ambiguity but cannot expand scope indefinitely.
 6. Specs distinguish concise **Core requested requirements**, **Approved derived requirements**, and **Deferred concerns**. Derived requirements retain provenance/priority; recommendation/research/model discovery never silently becomes core.
 7. Specs remain WHAT-only. Existing-spec updates preserve their discovered root without consulting config or re-prompting about placement; commit every spec whose resolved on-disk root is `docs/specs/`. Local-root specs remain local.
+8. Domain language is a dictionary (what a term IS, `_Avoid_` synonyms), not a spec, scratch pad, or decision log. Create `GLOSSARY.md` and `GLOSSARY-MAP.md` at the same locations as today’s `CONTEXT*`: root `GLOSSARY.md` for single-context; root `GLOSSARY-MAP.md` plus per-context `GLOSSARY.md` beside that context’s code. Lazy-create even if `CONTEXT*` already exist.
+9. Do not automatically write, rename, migrate, or copy into `CONTEXT.md` / `CONTEXT-MAP.md`. Default writes go to `GLOSSARY*` only. No copy CONTEXT → GLOSSARY. User asks to edit `CONTEXT*` → follow. Read: union both families; GLOSSARY wins; CONTEXT fills gaps.
+10. Discuss commit may include `GLOSSARY*` it wrote. `CONTEXT*` only if the user asked.
 
 ### Plan
 
@@ -108,8 +113,10 @@ Artifact placement remains config-driven. Existing spec updates preserve discove
 | Handoff | plan folder `handoff-<plan-name>.md` | follows plan |
 | Deferred finding ledger | plan folder `deferred-findings-<plan-name>.md` | follows plan |
 | Active marker | `.super-exec/active` | local |
+| Domain glossary | `GLOSSARY.md` at the consumer context location (repo root, or beside that context’s code) | committed when written as a discuss artifact |
+| Domain glossary map | `GLOSSARY-MAP.md` at the consumer repo root | committed when written as a discuss artifact |
 
-`<root>` is `docs/specs/` or `.super-exec/specs/`. `commitPlan` remains derived from governing spec root. Plan frontmatter contains `title`, `feature`, `branch`, and `status: pending`; execution updates `status` from `pending` to `in_progress`, then to `completed`.
+`<root>` is `docs/specs/` or `.super-exec/specs/`. `commitPlan` remains derived from governing spec root. Plan frontmatter contains `title`, `feature`, `branch`, and `status: pending`; execution updates `status` from `pending` to `in_progress`, then to `completed`. Glossary files live at consumer context locations, not under `<root>`. `CONTEXT*` are not default artifacts; commit only if the user asked.
 
 ## Domain terms
 
@@ -120,12 +127,16 @@ Artifact placement remains config-driven. Existing spec updates preserve discove
 - **Pending requirement** — final mandatory scope outside active increment.
 - **Deferred finding** — durable non-blocking review concern with evidence/fingerprint/promotion trigger.
 - **Normal-path proof** — evidence through path user/distributable/deployment actually uses, not substitute test state.
+- **Glossary** — `GLOSSARY.md`: domain-language dictionary for a context.
+- **Glossary map** — `GLOSSARY-MAP.md`: index of multiple context glossaries and how they relate.
+- **CONTEXT.md / CONTEXT-MAP.md** — read; no automatic write; user-asked edits OK.
 
 ## Decisions
 
 - Spec authority remains: ordinary divergence is code bug by default. Genuine limitation always requires explicit human governing-spec approval/amendment; Auto-PR has no amendment authority.
 - Plan architecture contracts stay authoritative; file maps/defaults are evidence, not gates.
 - Review disposition model applies to active se-exec only. Standalone commit and post-PR triage preserve their own workflow.
+- Create `GLOSSARY.md` / `GLOSSARY-MAP.md`; no auto-migrate of `CONTEXT.md` / `CONTEXT-MAP.md` (other skills may own them). Dual-read; GLOSSARY wins. User asks → edit CONTEXT*.
 
 ## Related specs
 

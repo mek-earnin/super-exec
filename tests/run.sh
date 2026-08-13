@@ -2668,6 +2668,7 @@ words(files.exec + files.cursor, ['standing checkpoint-commit authorization', 's
 
 // WHAT-only artifact writing and shared harness capability mapping.
 words(files.discuss, ['WHAT-only', 'no wrappers/comments', 'Domain terms mirror', 'real alternative trade-off'], 'spec template semantics');
+words(files.discuss, ['GLOSSARY.md', 'GLOSSARY-MAP.md', 'do not automatically write', 'CONTEXT.md'], 'glossary dual-read');
 words(files.cursor, ['Glob', 'file search', 'todo-list read/update'], 'Cursor reference capabilities');
 words(files.plan, ['Final review / PR decision', 'bookkeeping, never executable work'], 'final PR bookkeeping');
 

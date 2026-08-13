@@ -39,14 +39,14 @@ Run after the feature slug is stable, before writing the spec file.
 Run only after the user approves the already-written spec and the next action is committing artifacts.
 
 - **Re-check current branch.** On the confirmed branch → continue. On any other branch (protected or not) → switch/create before committing artifacts. Do not commit approved spec changes on a non-matching branch.
-- **Inspect dirty state before switching.** Approved review artifacts (`docs/specs/` OR `.super-exec/specs/`, plus `CONTEXT.md`, ADRs) are expected dirty. Unrelated files dirty too → surface them briefly, state they won't be staged or committed by `/se-commit`. Don't require a clean tree to proceed.
+- **Inspect dirty state before switching.** Approved review artifacts (`docs/specs/` OR `.super-exec/specs/`, plus `GLOSSARY.md` / `GLOSSARY-MAP.md`, ADRs) are expected dirty. Other dirty files (incl. unasked `CONTEXT.md` / `CONTEXT-MAP.md`) → surface; don't stage. Don't require a clean tree to proceed.
 - **Fetch + prune.** Run `git fetch --all --prune`. Don't skip this even on a clean tree.
 - **Detect the base branch.** Preferred base from Phase A/B still valid → use it. Else check whether `origin/develop` exists (`git ls-remote --exit-code --heads origin develop`): exists → use `origin/develop`, else fall back to `origin/main`.
 - **Switch or create the branch.** Local branch `<confirmed-name>` exists → run `git checkout <confirmed-name>`. Else → run `git checkout -b <confirmed-name> <base>^0` (for example, `git checkout -b intcomp-1234-new-banner origin/develop^0`). The `^0` suffix detaches from the remote-tracking ref so no upstream is set; the upstream is established on first push. Do not set `--track`.
 - **If checkout would overwrite or conflict with any uncommitted change, stop and ask.** Never discard, stash, or rewrite the user's/spec changes silently. Present the conflicting paths and recommend the smallest safe recovery:
   - Current HEAD is already the intended base (or the user accepts the base deviation) → create the confirmed branch from the current HEAD so the approved uncommitted review artifacts stay in place.
   - Otherwise → ask the user to resolve the working-tree conflict manually or choose a different branch/base; do not proceed to commit until the confirmed branch contains the approved files.
-- **Then commit artifacts.** The approved review artifacts under `docs/specs/` / `.super-exec/specs/`, plus any `CONTEXT.md` or ADR files, should already exist as uncommitted review artifacts. Only after this phase succeeds → `se-discuss` calls `/se-commit` (for paths whose root is committed).
+- **Then commit artifacts.** Approved review artifacts under `docs/specs/` / `.super-exec/specs/`, plus `GLOSSARY.md` / `GLOSSARY-MAP.md` and ADRs written this session, should already exist uncommitted. `CONTEXT.md` / `CONTEXT-MAP.md` only if the user asked. Then `se-discuss` calls `/se-commit` (committed-root paths only).
 
 ---
 

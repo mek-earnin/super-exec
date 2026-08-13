@@ -23,7 +23,7 @@ Use harness todo-list tool to load and track this checklist. Sync status as work
 
 First write `.super-exec/active` (`phase: discuss`, `started: <current UTC ISO-8601>`), then `/se-local-ignore`. Argument seeds interview, never assumes outcome. Read [@./branch-gate.md](./branch-gate.md), start Phase A read-only warm-up and fact discovery promptly; never create/switch here.
 
-Finders inspect `CONTEXT.md`/`CONTEXT-MAP.md`, both spec roots, relevant code, conventions, and existing behavior. Scan both roots (plus monorepo app) for matching ticket/slug; confirm update vs new. Update interviews delta only.
+Finders inspect `GLOSSARY.md`/`GLOSSARY-MAP.md` and `CONTEXT.md`/`CONTEXT-MAP.md` (union; GLOSSARY wins), both spec roots, relevant code, conventions, and existing behavior. Scan both roots (plus monorepo app) for matching ticket/slug; confirm update vs new. Update interviews delta only. Do not automatically write `CONTEXT.md` / `CONTEXT-MAP.md` unless the user asks.
 
 ## Interview as a decision/dependency graph
 
@@ -65,14 +65,14 @@ After WHAT, run branch-gate Phase B. Resolve ticket once (`NO_TICKET` only after
 
 Existing spec keeps discovered root; never consult config/move absent explicit request. New spec uses `/se-get-config commitSpec`: `true` → `docs/specs/`; `false` → `.super-exec/specs/`; `"ask"` → ask. Write `<root>/[<app>/]<feature>/spec-<feature>.md` using [spec-template.md](./spec-template.md), no wrappers/comments/extra sections. Keep update path/slug; edit delta only.
 
-Spec is WHAT-only: acceptance in Core requested requirements; explicitly approved research/agent suggestions in Approved derived requirements with provenance/priority; unaccepted concerns Deferred concerns. Convert implied implementation into behavior. Domain terms mirror `CONTEXT.md` through [@./context-format.md](./context-format.md); create lazily. Decisions holds hard/surprising trade-offs. Offer ADR only if hard to reverse, surprising without context, and real alternative trade-off; use [@./adr-format.md](./adr-format.md), feature path `<root>/[<app>/]<feature>/adr/<slug>.md` or global `docs/adr/<slug>.md`. Never commit pre-approval.
+Spec is WHAT-only: acceptance in Core requested requirements; explicitly approved research/agent suggestions in Approved derived requirements with provenance/priority; unaccepted concerns Deferred concerns. Convert implied implementation into behavior. Domain terms mirror `GLOSSARY.md` through [@./context-format.md](./context-format.md) (union `CONTEXT.md`; GLOSSARY wins). Create lazily. Do not automatically write `CONTEXT.md` unless the user asks. Decisions holds hard/surprising trade-offs. Offer ADR only if hard to reverse, surprising without context, and real alternative trade-off; use [@./adr-format.md](./adr-format.md), feature path `<root>/[<app>/]<feature>/adr/<slug>.md` or global `docs/adr/<slug>.md`. Never commit pre-approval.
 
-Split: one independent template spec each, optional real sibling dependency or `none`; shared terms once in `CONTEXT.md`.
+Split: one independent template spec each, optional real sibling dependency or `none`; shared terms once in `GLOSSARY.md`.
 
 ## Review and publish
 
 Self-review every spec: no placeholders, contradictions, HOW/code/file layout/scaffolding, or ambiguous requirement; split cohesion and real dependency references. Fix inline.
 
-Present one spec or full split batch; loop edits until explicit approval. Approval authorizes branch-gate Phase C and, for committed-root artifacts only, `/se-commit` with exact approved spec/ADR/`CONTEXT.md` paths. Local specs never commit; user no-commit overrides. Checkout conflict → stop and ask; never stash/discard/rewrite.
+Present one spec or full split batch; loop edits until explicit approval. Approval authorizes branch-gate Phase C and, for committed-root artifacts only, `/se-commit` with exact approved spec/ADR/`GLOSSARY.md`/`GLOSSARY-MAP.md` paths; `CONTEXT.md`/`CONTEXT-MAP.md` only if the user asked. Local specs never commit; user no-commit overrides. Checkout conflict → stop and ask; never stash/discard/rewrite.
 
 Single: auto-invoke `/se-plan`. Split: after batch approval ask first plan (default foundational), run deferred Phase B then C, commit committed artifacts together, auto-invoke `/se-plan <chosen slug/path>` only; list remaining specs for later manual no-arg discovery. Plan → execute remains fresh-session boundary.
