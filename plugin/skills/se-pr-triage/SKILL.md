@@ -18,28 +18,30 @@ Controller stays lean. Delegate all MCP calls, git ops, and heavy execution to s
 
 ---
 
-## Session activation (do this FIRST)
-
-Invoking this skill (typed `/se-pr-triage` or model auto-invoked for post-PR triage) starts a triage session. As the very first action, **write the session marker** `.super-exec/active` in the repo root (create `.super-exec/` if needed), e.g. `phase: pr-triage` and `started: <current UTC ISO-8601>`. This makes the enforcement guards live. Hooks read existence + mtime; the stale-marker decision is a model-judged heuristic with no fixed TTL. **Immediately after writing the marker, invoke `/se-local-ignore`.** Clear `.super-exec/active` at every early exit and at the end of the round.
-
----
-
 ## Mandatory Ordered Checklist
 
 Complete every item in order. Do not skip or reorder. Do not advance past a step until it is confirmed done.
+Use harness todo-list tool to load and track this checklist. Sync status as work changes; before delivery or completion claim, verify every applicable item complete.
 
-- [ ] **1. Detect the target PR**
-- [ ] **2. Read triage state (state reader subagent)**
-- [ ] **3. Determine what is actionable in each track**
-- [ ] **4. Triage Track A decisions**
-- [ ] **5. Mandatory decision approval gate (Gate 1)**
-- [ ] **6. Execute approved Track A fixes**
-- [ ] **7. Compose exact final replies**
-- [ ] **8. Mandatory final reply approval gate (Gate 2)**
-- [ ] **9. Post exact approved replies**
-- [ ] **10. Execute Track B (autonomous)**
-- [ ] **11. End-of-round report**
-- [ ] **12. Clear `.super-exec/active`**
+- [ ] **1. Activate session and apply local ignore**
+- [ ] **2. Detect the target PR**
+- [ ] **3. Read triage state (state reader subagent)**
+- [ ] **4. Determine what is actionable in each track**
+- [ ] **5. Triage Track A decisions**
+- [ ] **6. Mandatory decision approval gate (Gate 1)**
+- [ ] **7. Execute approved Track A fixes**
+- [ ] **8. Compose exact final replies**
+- [ ] **9. Mandatory final reply approval gate (Gate 2)**
+- [ ] **10. Post exact approved replies**
+- [ ] **11. Execute Track B (autonomous)**
+- [ ] **12. End-of-round report**
+- [ ] **13. Clear `.super-exec/active`**
+
+---
+
+## Session activation (do this FIRST)
+
+Invoking this skill (typed `/se-pr-triage` or model auto-invoked for post-PR triage) starts a triage session. As the very first action, **write the session marker** `.super-exec/active` in the repo root (create `.super-exec/` if needed), e.g. `phase: pr-triage` and `started: <current UTC ISO-8601>`. This makes the enforcement guards live. Hooks read existence + mtime; the stale-marker decision is a model-judged heuristic with no fixed TTL. **Immediately after writing the marker, invoke `/se-local-ignore`.** Clear `.super-exec/active` at every early exit and at the end of the round.
 
 ---
 
@@ -93,13 +95,13 @@ For each Fix, the controller drafts a short summary (one to two sentences) of wh
 
 Present ALL Track A items together in a single prompt to the human before pushing any Fix. For each item include the original comment (with permalink or stable ID), proposed triage decision + rationale, and — for Fix items — the short fix summary. The rationale is internal analysis for the human, not a draft addressed to the reviewer. Include no proposed, suggested, sample, provisional, or final reply message. The human approves or steers the decisions and Fix scope in one shot.
 
-**Gate-1 approval authorizes only the approved Fix work. It never authorizes a PR reply.** No Track A Fix is pushed until this gate is explicitly approved. There is no auto-approve mode, even when se-pr-triage is wrapped in `/loop`.
+Gate-1 approval authorizes only approved Fix work; it never authorizes a PR reply. No Track A Fix is pushed until this gate is explicitly approved. There is no auto-approve mode, even when se-pr-triage is wrapped in `/loop`.
 
 ## 6. Execute approved Track A fixes
 
 Process only the Gate-1-approved Fix items. Decline / Answer / Defer items wait untouched for the final-reply steps; do not dispatch any reply poster yet.
 
-- **Fix items:** dispatch an **implementer subagent (mid tier, pinned to `sonnet` on Claude Code)** via the `Task` tool to make the code change. Then clear the **inner verification loop** via `/se-verify` and the **outer review loop** via `/se-review`, exactly as a normal build task in `/se-exec`. Once inner-loop-green and outer-loop-clean, commit via `/se-commit` (pass the explicit list of files the implementer touched — `/se-commit` owns staging isolation and the message), push the commit, and confirm the push succeeded.
+- **Fix items:** dispatch an **implementer subagent (mid tier, pinned to `sonnet` on Claude Code)** via the `Task` tool to make the code change. Then invoke `/se-verify` and `/se-review` in `standalone-triage` mode with PR-comment acceptance inputs, changed paths, and immutable identity; this preserves Critical/Important blocking behavior without active-increment artifacts. Once green/reviewed, commit via `/se-commit` (pass explicit files — `/se-commit` owns staging/message), push, and confirm.
 
   If the actual implementation must materially differ from the Gate-1-approved fix summary, return that item to Gate 1 before committing or pushing. If a Fix cannot be made green, reviewed clean, or confirmed pushed, abort that item: do not create a reply candidate, leave the thread untouched, and flag it in the round report as needing human attention. The remaining approved items still complete.
 
@@ -122,6 +124,8 @@ Content-only edits can be approved in this gate. A requested decision or Fix-sco
 ## 9. Post exact approved replies
 
 Immediately before posting, revalidate each approved target: it must still be unresolved/in-scope and have no reply from us. If live state changed, skip it untouched and report why; new comments belong to the next round.
+
+When replying to bots (in-thread or top-level), always tag it. E.g. replaying to CodeRabbit, always tag `@coderabbitai` in the reply body.
 
 Dispatch a **runner subagent (cheap tier)** with only the immutable target ID and exact Gate-2-approved body for each still-valid reply. The poster must post the body verbatim — never rewrite, expand, summarize, or substitute any text. For an inline review-comment thread, post in-thread via GitHub MCP `add_reply_to_pull_request_comment`; for a top-level review summary, post a top-level PR comment via `add_issue_comment` referencing the review. Do not auto-resolve threads. A Gate-2-skipped reply remains untouched and may resurface as actionable in a later stateless round.
 
@@ -146,35 +150,8 @@ Delete `.super-exec/active`. This is the final act of the round. Do not leave th
 
 ---
 
-## Red-Flag Table
+## Non-negotiables
 
-When you catch yourself about to do any of the following, STOP and apply the correction.
+Gate 1 never authorizes a reply. Draft none before step 7; Gate 2 approves exact target/body only, and any change reopens it. Track B never replies. Never auto-approve under `/loop`; report every flaky rerun; clear active last.
 
-| Red flag | What you were about to do | Correction |
-|---|---|---|
-| "Gate 1 approved the batch, so replies are approved too." | Treat decision/Fix approval as reply authorization. | Gate 1 never authorizes replies. Finish approved fixes, compose exact post-fix replies, present Gate 2, and wait for explicit final-reply approval. |
-| "I'll fetch PR state myself to save a subagent hop." | Run MCP calls or `gh` commands inline in the controller. | The controller never runs MCP or `gh` inline. All reads and mutations are dispatched to subagents via the `Task` tool. |
-| "The bot is wrong but it's a CI bot — I'll reply to explain." | Post a reply on a status/CI bot comment or any Track B item. | Track B never posts replies. The resolution is a green check. If escalation is needed, it goes in the round report only. |
-| "I'll fix the spec to satisfy the reviewer — it's a small change." | Silently change spec-defined behavior to satisfy a review comment. | A comment contradicting the spec (v1 path under either root) defaults to Decline + cite the spec. Only the human can override. If the spec genuinely needs amendment, that is a separate `/se-discuss` session. |
-| "I'll auto-approve under `/loop` to keep the round moving." | Skip or bypass either Track A gate in loop mode. | There is no auto-approve mode. Every round with Track A items must wait at Gate 1 and Gate 2, even when wrapped in `/loop`. |
-| "I'll draft a provisional reply during triage and finalize it after the fix." | Generate reviewer-facing message copy before the actual result and commit reference exist. | Gate 1 contains only the original comment, decision/rationale, and Fix summary. Draft no reply text before step 7; compose exact Fix replies only after confirmed push. |
-| "The final reply is close enough to the approved draft." | Rewrite, expand, retarget, or substitute text after Gate 2. | Post the exact approved target/body verbatim. Any change invalidates approval and reopens Gate 2. |
-| "The fix is pushed, so I'll reply automatically." | Dispatch a reply poster immediately after fixing. | A pushed fix creates a Gate-2 reply candidate, not authorization. Present exact mapped replies and wait for explicit approval before posting. |
-| "I'll silently rerun the CI job to clear a flaky failure." | Rerun a CI job without surfacing it in the round report. | All Track B verdicts — including flaky-rerun — appear in the end-of-round report with links. Nothing is silently handled. |
-| "I'll leave the session marker set — someone else will clear it." | Complete the round without clearing `.super-exec/active`. | Step 12 is mandatory: clear the marker as the final act. Leaving it set keeps guards armed on a dead session. |
-
----
-
-## Model and Tool Assignments
-
-Resolve all concrete model IDs and dispatch details from `/se-subagent`. Never hardcode a version-pinned model ID in skill prose; always use the tier aliases below.
-
-| Role | Prose alias | Access / Notes |
-|---|---|---|
-| State reader | cheap / finder tier | Dispatched via `Task` tool. GitHub MCP primary (`pull_request_read`, `get_me`); `gh` fallback when MCP unavailable. Returns structured snapshot only — no raw payloads. |
-| Track A implementer / fixer | mid tier (pinned to `sonnet` on CC) | Dispatched via `Task` tool. Applies the code fix for a single approved Fix item. |
-| Track A verification (inner loop) | runner → judge split per `/se-verify` | `/se-verify` owns the runner (cheap) → judge (strong) cycle. |
-| Track A review (outer loop) | strong / reviewer tier per `/se-review` | `/se-review` owns the arch-gate + deep-review cycle. |
-| Track A reply poster | cheap / runner tier | Dispatched only after Gate 2. Receives immutable target IDs + exact approved bodies, posts them verbatim via GitHub MCP `add_reply_to_pull_request_comment` (inline threads) or `add_issue_comment` (review-summary / top-level replies), and never rewrites content. |
-| Track B executor | cheap → mid as needed, per `ci-triage.md` | Dispatched via `Task` tool. Follows the full Track B procedure in `ci-triage.md`. Uses `gh run rerun --failed` for flaky reruns; uses `gh run view --log-failed` when the status comment lacks detail. |
-| Commit | `/se-commit` (runner subagent) | `/se-commit` owns staging isolation, message, and dispatch. Controller passes the implementer's explicit file list. |
+Controller delegates all MCP, `gh`, git, and substantial execution. State reader/poster/Track B are cheap; implementer is mid; standalone-triage verification/review use `/se-verify` and `/se-review`; `/se-commit` owns commit. See `/se-subagent`; never hardcode models.

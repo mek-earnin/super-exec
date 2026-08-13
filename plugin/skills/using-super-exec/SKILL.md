@@ -15,7 +15,7 @@ Ships as **skills only** — no separate slash commands. Invoke each as `/se-dis
 
 - `/se-discuss` — **Design session.** From a raw idea or task description, interview to one or more reviewed specs (one per cohesive feature — a multi-feature session splits into separate specs with your confirmation), then auto-chain into `/se-plan` for the first spec after approval. Specs land under a config-driven root (`docs/specs/` committed or `.super-exec/specs/` local) as `<root>/[<app>/]<feature>/spec-<feature>.md` (slug-only).
 - `/se-plan` — **Plan / re-plan / re-entry.** Turn a spec into an architecture + verification plan, revise an existing plan, or (no argument) pick up the next unplanned spec from a split. Plans land under either root as `<root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md`. The **plan → execute boundary stays a hard fresh-session step** — never auto-chained.
-- `/se-exec` — **Build session.** Execute the selected plan task by task with verification and review checkpoints. Owns plan resume, completion checks, task/todo sync, commit cadence, and the final PR/no-PR decision.
+- `/se-exec` — **Build session.** Select smallest working increments from approved plan outcomes, prove them through normal user paths, and use supporting checkpoints for focused progress. Owns resume, durable increment state, commit cadence, and final PR/no-PR decision.
 - `/se-pr-triage` — **Post-PR triage session.** Manual entrypoint; not auto-chained from `/se-pr`. Runs one loop-safe triage round: Track A first gates review-comment decisions and Fix scope, then after successful pushes separately gates the exact final replies before posting; Track B investigates and resolves CI failures autonomously with no PR replies. Neither Track A gate auto-approves under `/loop`.
 
 ## Config & support skills
@@ -49,15 +49,15 @@ This is a **best-effort** override that wins by **specificity, not volume**: it 
 ## Core enforced discipline
 
 - **Delegate heavy work to subagents.** Exploration, research, parallel file edits go to agents — keep the main thread for decisions and verification.
-- **Verify before claiming done.** Run the actual check (tests, linter, type-check, build) and paste the output. Assertions without evidence are rejected.
+- **Verify before claiming done.** Working increments need full baseline plus normal user/distributable-path evidence; lower-layer, mocked, and scripted checks remain supporting evidence.
 - **Scope guard.** Each session works only the steps in the current plan. Out-of-scope changes are deferred, not sneaked in.
 - **Reuse before writing.** Search the codebase for existing patterns, utilities, conventions before adding new ones.
 - **Repo conventions win.** Follow the project's existing style, tooling, structure — don't impose external preferences.
-- **Commit routinely; pending human review is the only block.** Per-task commits are part of the workflow, but never commit while a human review is pending (`.super-exec/gate-open`). The detailed toggle and host-policy resolution lives in `/se-exec` and the harness reference docs.
+- **Commit routinely; pending human review is the only block.** Supporting-checkpoint commits are part of the workflow, but never commit while a human review is pending (`.super-exec/gate-open`). The detailed toggle and host-policy resolution lives in `/se-exec` and the harness reference docs.
 
 ## Staged workflow
 
-Each stage produces an artifact. The next stage checks that artifact before proceeding. A stage cannot be skipped. If a checkpoint fails, the workflow returns to the previous stage rather than continuing.
+Each stage produces durable evidence. Supporting checkpoints stay focused; working-increment and final boundaries prove behavior end-to-end. User corrections override stale in-flight work immediately.
 
 ## Authoring & cross-harness note
 

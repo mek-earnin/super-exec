@@ -8,17 +8,31 @@
 - Auto-PR: on | off
 - UI plan: yes | no
 
-## Completed Tasks
-### <Completed task name>
-- Status: DONE
-- Evidence: <brief summary — exit code, test count, key output line>
+## Active Working Increment
+- Outcome: <smallest coherent end-to-end user value, or `None.`>
+- Selected requirements: <traceability IDs/requirements>
+- State: <slicing | implementing | runtime-proof | reviewing | checkpointed>
+- Runtime demonstration: <normal path and selected transitions, or `pending`>
+- Review identity: <pre-commit HEAD + deterministic scoped tracked/untracked hash + reviewed content snapshot>
+- Delivery identity: <committed HEAD/tree equivalent to reviewed snapshot, or `pending`>
 
-## Next Unstarted Task
-### <Task name>
-<Full task description from the plan file.>
+## Supporting Checkpoints
+### <Checkpoint name>
+- Status: <completed | in progress | pending>
+- Focused evidence: <brief summary — exit code, count, key output>
+- Focused review / commit: <revision or pending>
 
-## In-Flight Decisions
-<Design choices, scope clarifications, discoveries, or None.>
+## Pending Requirements
+<Approved requirements outside active increment, with traceability IDs, or `None.`>
 
-## Open Follow-Ups
-<Deferred items, known gaps, things to revisit, or None.>
+## Deferred Ledger Reference
+- Path: <plan-folder>/deferred-findings-<plan-name>.md
+- Status: <absent | open | revalidated | empty>
+
+## Reconciliation
+- Required outcome status: <complete/pending IDs>
+- Work-package checkbox status: <only fully complete named outcomes checked>
+- Terminal state: <none | blocked-review | blocked-limitation>
+
+## Corrections And Decisions
+<Current user corrections, scope clarifications, cancellation state, or `None.`>

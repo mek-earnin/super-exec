@@ -17,7 +17,7 @@ super-exec is built for teams that want agent speed without constant babysitting
 - Turns loose intent into a reviewed spec before implementation starts.
 - Separates WHAT from HOW, then builds from that agreed plan.
 - Keeps heavy searches, builds, tests, and reviews out of the main session when possible.
-- Verifies with real evidence before claiming work is done.
+- Proves working increments through normal user or distributable paths; tests, mocks, and scripted states support that proof but do not replace it.
 - Prefers the target repo's own skills and conventions for branches, commits, PRs, tests, and local dev.
 - Keeps execution artifacts local by default, with per-feature placement — spec and plan, team or local — configurable via `se-config`.
 
@@ -47,15 +47,15 @@ If `superpowers` is also installed, super-exec is intended to drive the feature 
 
 ### 1. Discuss
 
-Run `/se-discuss` when starting a new feature or behavior change. The agent interviews you until the problem, goals, non-goals, requirements, domain terms, and key decisions are clear. The output is one or more specs (one per cohesive feature) you review before the workflow moves on — when a single conversation covers several distinct features, super-exec proposes splitting it into a spec per feature and plans them one at a time.
+Run `/se-discuss` when starting a new feature or behavior change. The agent asks only questions that still change requested behavior, priority, or acceptance; “proceed,” “implement,” and corrections stop obsolete questions immediately. Specs distinguish core user requests from approved derived requirements and deferred concerns.
 
 ### 2. Plan
 
-Planning turns the approved spec into an implementation and verification plan. It covers architecture, task shape, reuse opportunities, repo skills to invoke, and the evidence needed to prove the work. You review the plan before build work begins.
+Planning turns the approved spec into architecture contracts, outcomes, dependencies, requirement traceability, and runtime proof paths. File maps remain design evidence; execution can choose working increments without changing approved behavior.
 
 ### 3. Exec
 
-Run `/se-exec` in a fresh session when ready to build. The agent works task by task through implementation, verification, review, fixes, and PR preparation. It keeps the spec and plan as the source of truth for scope.
+Run `/se-exec` in a fresh session when ready to build. The agent selects smallest coherent end-to-end working increments, uses focused checkpoint commits for enabling work, and runs full baseline/runtime proof plus deep review only at increment boundaries. Later approved requirements stay pending until their increment, then all remain required before final completion. A verified technical limitation stops completion and PR creation until a human approves the governing-spec resolution (and re-plans an architecture change); Auto-PR does not bypass that gate.
 
 ### 4. PR / Triage
 
@@ -81,8 +81,8 @@ Artifact placement and two workflow gates are controlled by a small tiered confi
 |---|---|---|
 | `commitSpec` | New-spec root — committed `docs/specs/` (team) vs. local `.super-exec/specs/`. Existing updates keep their current root. | - `"ask"` (default) — prompt when creating a spec<br>- `true` — commit new specs under `docs/specs/`<br>- `false` — keep new specs local under `.super-exec/specs/` |
 | `commitPlan` | Plan root. | - `"ask"` (default) — prompt at plan-write time<br>- `false` — keep the plan local<br>- `"inheritSpec"` — follow the spec's root (never commits a plan whose spec is local) |
-| `humanReviewBeforeCheckpointCommit` | Human approval before each task's checkpoint commit. | - `"ask"` (default) — prompt at `/se-exec` start<br>- `true` — always require approval<br>- `false` — never require it |
-| `autoCreatePr` | Auto-open a PR when the build is done. | - `"ask"` (default) — prompt at `/se-exec` start<br>- `true` — always open a PR<br>- `false` — never open one |
+| `humanReviewBeforeCheckpointCommit` | Human approval before each supporting-checkpoint commit. | - `"ask"` (default) — prompt at `/se-exec` start<br>- `true` — always require approval<br>- `false` — commit after focused review without another prompt |
+| `autoCreatePr` | Auto-open a PR after final completion. | - `"ask"` (default) — prompt at `/se-exec` start<br>- `true` — auto-open after final checks<br>- `false` — ask at final review; do not auto-create |
 
 Values merge over three tiers: repo-local `.super-exec/se-config.local.json` > user `~/.super-exec/se-config.json` > shipped defaults. Manage them with `/se-config print` (the effective config plus any local and user overrides) and `/se-config set <local|user> <key> <value>`.
 
@@ -96,7 +96,7 @@ Values merge over three tiers: repo-local `.super-exec/se-config.local.json` > u
 
 ## Artifacts
 
-Specs and plans use a slug-only, per-feature layout. `se-config` chooses new-artifact roots: committed under `docs/specs/` for the team, or kept local under `.super-exec/specs/` (gitignored). Existing spec updates stay in their current root without another placement prompt. Handoffs follow the plan's root, while session state (the active marker and gate files) always stays under `.super-exec/`.
+Specs and plans use a slug-only, per-feature layout. `se-config` chooses new-artifact roots: committed under `docs/specs/` for the team, or kept local under `.super-exec/specs/` (gitignored). Existing spec updates stay in their current root without another placement prompt. Handoffs and separate `deferred-findings-<plan-name>.md` ledgers follow the plan's root, while session state (the active marker and gate files) always stays under `.super-exec/`.
 
 Detailed workflow contracts and implementation-specific behavior live in the source-of-truth files:
 

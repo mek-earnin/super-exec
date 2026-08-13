@@ -447,41 +447,24 @@ fi
 echo ""
 echo "Check 6: Auto-commit authorization framing"
 
-# The review-before-commit OFF toggle is documented as the user's standing
-# authorization to auto-commit per task — this is what reconciles super-exec
-# auto-commit with host agent policies that forbid committing without an
-# explicit per-action user request. If a future edit silently drops this
-# framing, the conflict returns (the agent babysits each commit). These greps
-# guard the framing's presence at every canonical site. The behavior itself
-# (whether the model commits) is not unit-testable here; presence is.
-#
-# Each entry: <relative path>|||<case-insensitive fixed phrase that must exist>
-framing_sites=(
-  "plugin/skills/se-exec/SKILL.md|||standing authorization"
-  "plugin/skills/using-super-exec/references/cursor-tools.md|||standing authorization"
-  "docs/specs/core-workflow/spec-core-workflow.md|||standing authorization"
-)
-
-for entry in "${framing_sites[@]}"; do
-  rel="${entry%%|||*}"
-  phrase="${entry##*|||}"
-  file="${REPO_ROOT}/${rel}"
-  if [ ! -f "$file" ]; then
-    fail "framing: file not found: ${rel}"
-  elif grep -qiF "$phrase" "$file" 2>/dev/null; then
-    pass "framing present in ${rel} (\"${phrase}\")"
-  else
-    fail "framing missing in ${rel}: expected phrase \"${phrase}\""
-  fi
-done
-
-# The Cursor-specific resolution lives in a dedicated reference section; its
-# header is the durable anchor for the host-policy reconciliation.
-cursor_ref="${REPO_ROOT}/plugin/skills/using-super-exec/references/cursor-tools.md"
-if grep -qiF "Host commit policy vs auto-commit" "$cursor_ref" 2>/dev/null; then
-  pass "cursor-tools.md has 'Host commit policy vs auto-commit' section"
+# OFF directly authorizes checkpoint commits; Cursor maps that decision to its
+# host policy. Check concepts owned by each surface, not prose or headings.
+authorization_result="$(REPO_ROOT="$REPO_ROOT" node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const read = rel => fs.readFileSync(path.join(process.env.REPO_ROOT, rel), 'utf8').toLowerCase();
+const has = (text, terms) => terms.every(term => text.includes(term));
+const exec = read('plugin/skills/se-exec/SKILL.md');
+const cursor = read('plugin/skills/using-super-exec/references/cursor-tools.md');
+const valid = has(exec, ['review-before-commit', 'off', 'checkpoint', 'commit', 'authorization'])
+  && has(cursor, ['commit policy', 'se-exec', 'review-before-commit', 'authorization']);
+process.stdout.write(valid ? 'ok' : 'missing owner authorization behavior');
+NODE
+)"
+if [ "$authorization_result" = "ok" ]; then
+  pass "checkpoint authorization and Cursor host-policy resolution are documented"
 else
-  fail "cursor-tools.md missing 'Host commit policy vs auto-commit' section"
+  fail "checkpoint authorization or Cursor host-policy resolution is missing"
 fi
 
 # ---------------------------------------------------------------------------
@@ -741,7 +724,6 @@ fi
 
 spec_convention_sites=(
   "plugin/skills/se-discuss/SKILL.md|||spec-<feature>.md"
-  "plugin/skills/se-discuss/SKILL.md|||/se-get-config"
   "plugin/skills/se-plan/SKILL.md|||plan-<plan-name>.md"
   "plugin/skills/se-plan/SKILL.md|||/se-get-config"
   "plugin/skills/se-plan/plan-template.md|||spec-<feature>.md"
@@ -770,24 +752,25 @@ if [ -f "$discuss_skill" ]; then
   else
     fail "se-discuss SKILL missing v1 spec path template <root>/[<app>/]<feature>/spec-<feature>.md"
   fi
-  if grep -qF '/se-get-config' "$discuss_skill" 2>/dev/null \
-     && grep -qF 'commitSpec' "$discuss_skill" 2>/dev/null; then
-    pass "se-discuss SKILL consults /se-get-config for commitSpec"
+  if grep -qiE 'commitSpec.*true.*false.*ask|true.*false.*ask.*commitSpec' "$discuss_skill" 2>/dev/null; then
+    pass "se-discuss SKILL resolves commitSpec placement choices"
   else
-    fail "se-discuss SKILL missing /se-get-config consult for commitSpec"
+    fail "se-discuss SKILL missing commitSpec placement choices"
   fi
-  if grep -qF 'Existing spec update' "$discuss_skill" 2>/dev/null \
-     && grep -qF 'Do NOT invoke `/se-get-config` for that spec' "$discuss_skill" 2>/dev/null \
-     && grep -qF 'Mixed multi-feature split' "$discuss_skill" 2>/dev/null; then
-    pass "se-discuss SKILL preserves existing spec roots without re-prompting"
+  discuss_root_result="$(REPO_ROOT="$REPO_ROOT" node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const text = fs.readFileSync(path.join(process.env.REPO_ROOT, 'plugin/skills/se-discuss/SKILL.md'), 'utf8').toLowerCase();
+const has = terms => terms.every(term => text.includes(term));
+const preserves = has(['existing', 'discovered root', 'config', 'move', 'explicit request']);
+const commits = has(['committed-root artifacts', '/se-commit', 'local specs never commit']);
+process.stdout.write(preserves && commits ? 'ok' : 'missing existing-root or publication behavior');
+NODE
+)"
+  if [ "$discuss_root_result" = "ok" ]; then
+    pass "se-discuss preserves existing roots and commits only committed-root artifacts"
   else
-    fail "se-discuss SKILL must skip commitSpec placement prompts for existing spec updates"
-  fi
-  if grep -qF "spec's resolved on-disk root is \`docs/specs/\`" "$discuss_skill" 2>/dev/null \
-     && grep -qF 'commit only the specs whose resolved on-disk root is `docs/specs/`' "$discuss_skill" 2>/dev/null; then
-    pass "se-discuss SKILL commits approved specs by resolved on-disk root"
-  else
-    fail "se-discuss SKILL must commit approved specs by resolved on-disk root"
+    fail "se-discuss existing-root or publication behavior is missing"
   fi
   if grep -qF 'docs/specs/' "$discuss_skill" 2>/dev/null \
      && grep -qF '.super-exec/specs/' "$discuss_skill" 2>/dev/null; then
@@ -832,12 +815,19 @@ if [ -f "$plan_skill" ]; then
   else
     fail "se-plan SKILL must mention both docs/specs/ and .super-exec/specs/"
   fi
-  if grep -qF 'NO plan folder' "$plan_skill" 2>/dev/null \
-     && grep -qF 'AskUserQuestion' "$plan_skill" 2>/dev/null \
-     && grep -qF 'which to plan' "$plan_skill" 2>/dev/null; then
-    pass "se-plan no-arg discovery lists unplanned specs and asks which to plan"
+  plan_discovery_result="$(REPO_ROOT="$REPO_ROOT" node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const text = fs.readFileSync(path.join(process.env.REPO_ROOT, 'plugin/skills/se-plan/SKILL.md'), 'utf8').toLowerCase();
+const has = terms => terms.every(term => text.includes(term));
+const valid = has(['no argument', 'scan', 'specs', 'plans/', 'list', 'ask user']);
+process.stdout.write(valid ? 'ok' : 'missing no-argument discovery behavior');
+NODE
+)"
+  if [ "$plan_discovery_result" = "ok" ]; then
+    pass "se-plan discovers unplanned specs and asks user to choose"
   else
-    fail "se-plan no-arg discovery missing list/ask wording (NO plan folder / which to plan)"
+    fail "se-plan no-argument discovery behavior is missing"
   fi
   if grep -qiF 'lowest-numbered' "$plan_skill" 2>/dev/null; then
     fail "se-plan SKILL still says lowest-numbered (v0 auto-discovery)"
@@ -849,14 +839,21 @@ if [ -f "$plan_skill" ]; then
   else
     pass "se-plan SKILL no longer uses flat docs/specs/NNNN-<feature>.md path"
   fi
-  # Config-aware plan commit on approval: commitPlan decides root AND whether to commit
-  if grep -qF 'commit the approved plan' "$plan_skill" 2>/dev/null \
-     && grep -qF '/se-commit' "$plan_skill" 2>/dev/null \
-     && grep -qF 'docs/specs/' "$plan_skill" 2>/dev/null \
-     && grep -qF 'When the plan lives under `.super-exec/specs/` (local), do **not** commit it and say so' "$plan_skill" 2>/dev/null; then
-    pass "se-plan SKILL commits approved plan via /se-commit under docs/specs/; skips when local"
+  # Committed root publishes ready plan + ledger; local root publishes neither.
+  plan_publication_result="$(REPO_ROOT="$REPO_ROOT" node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const plan = fs.readFileSync(path.join(process.env.REPO_ROOT, 'plugin/skills/se-plan/SKILL.md'), 'utf8');
+const has = terms => terms.every(term => plan.toLowerCase().includes(term.toLowerCase()));
+const committedPair = has(['ready', 'plan', 'ledger', 'together', '/se-commit']);
+const localPair = has(['local root', 'commit neither']);
+process.stdout.write(committedPair && localPair ? 'ok' : 'invalid paired plan publication');
+NODE
+)"
+  if [ "$plan_publication_result" = "ok" ]; then
+    pass "se-plan publishes plan and ledger together when committed; neither when local"
   else
-    fail "se-plan SKILL missing config-aware plan-commit wording (/se-commit when docs/specs/; skip when .super-exec/specs/)"
+    fail "se-plan config-aware paired plan publication contract missing: ${plan_publication_result}"
   fi
   if grep -qF 'there is no commit tied to this branch' "$plan_skill" 2>/dev/null; then
     fail "se-plan SKILL still claims always-local plan (there is no commit tied to this branch)"
@@ -877,12 +874,19 @@ if [ -f "$exec_skill" ]; then
   else
     fail "se-exec SKILL missing /se-get-config consult for humanReviewBeforeCheckpointCommit and autoCreatePr"
   fi
-  if grep -qF 'resolved `true` or `false` → use it directly, do NOT ask' "$exec_skill" 2>/dev/null \
-     && grep -qF 'Resolved `"ask"` → prompt the user for that one via `AskUserQuestion`' "$exec_skill" 2>/dev/null \
-     && grep -qF 'skip the `AskUserQuestion` ENTIRELY when neither is `"ask"`' "$exec_skill" 2>/dev/null; then
-    pass "se-exec SKILL has config-driven toggle logic (true/false skip AskUserQuestion; ask prompts)"
+  exec_toggle_result="$(REPO_ROOT="$REPO_ROOT" node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const text = fs.readFileSync(path.join(process.env.REPO_ROOT, 'plugin/skills/se-exec/SKILL.md'), 'utf8').toLowerCase();
+const has = terms => terms.every(term => text.includes(term));
+const valid = has(['humanreviewbeforecheckpointcommit', 'autocreatepr', 'booleans', 'directly', 'ask', 'only']);
+process.stdout.write(valid ? 'ok' : 'missing direct-boolean/ask-only toggle behavior');
+NODE
+)"
+  if [ "$exec_toggle_result" = "ok" ]; then
+    pass "se-exec uses resolved booleans directly and prompts only for ask"
   else
-    fail "se-exec SKILL missing config-driven toggle logic (true/false skip; ask → AskUserQuestion)"
+    fail "se-exec direct-boolean/ask-only toggle behavior is missing"
   fi
   if grep -qF 'docs/specs/' "$exec_skill" 2>/dev/null \
      && grep -qF '.super-exec/specs/' "$exec_skill" 2>/dev/null; then
@@ -890,278 +894,70 @@ if [ -f "$exec_skill" ]; then
   else
     fail "se-exec SKILL must mention both docs/specs/ and .super-exec/specs/"
   fi
-  if grep -qF 'handoff-<plan-name>.md' "$exec_skill" 2>/dev/null; then
-    pass "se-exec SKILL uses v1 handoff filename handoff-<plan-name>.md"
+  handoff_owner_result="$(REPO_ROOT="$REPO_ROOT" node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const read = rel => fs.readFileSync(path.join(process.env.REPO_ROOT, rel), 'utf8').toLowerCase();
+const exec = read('plugin/skills/se-exec/SKILL.md');
+const handoff = read('plugin/skills/se-handoff/SKILL.md');
+const valid = exec.includes('/se-handoff') && handoff.includes('handoff-<plan-name>.md');
+process.stdout.write(valid ? 'ok' : 'handoff ownership is missing');
+NODE
+)"
+  if [ "$handoff_owner_result" = "ok" ]; then
+    pass "se-exec delegates handoff and se-handoff owns filename"
   else
-    fail "se-exec SKILL missing v1 handoff filename handoff-<plan-name>.md"
-  fi
-  if grep -qF 'handoff.md' "$exec_skill" 2>/dev/null; then
-    fail "se-exec SKILL still references bare handoff.md (expected handoff-<plan-name>.md only)"
-  else
-    pass "se-exec SKILL no longer references bare handoff.md"
+    fail "handoff delegation or filename ownership is missing"
   fi
 else
   fail "se-exec SKILL.md missing"
 fi
 
 # ---------------------------------------------------------------------------
-# Check 9 — Plan frontmatter status contract
+# Check 9 — Plan and execution lifecycle contracts
 # ---------------------------------------------------------------------------
 echo ""
-echo "Check 9: Plan frontmatter status contract"
+echo "Check 9: Plan and execution lifecycle contracts"
 
-# Plans carry local execution metadata in YAML frontmatter. The branch recorded
-# there is the build-session source of truth, and status uses the lowercase
-# enum pending | in_progress | completed.
-plan_frontmatter_sites=(
-  "plugin/skills/se-plan/plan-template.md|||title: <Plan title>"
-  "plugin/skills/se-plan/plan-template.md|||feature: <feature slug>"
-  "plugin/skills/se-plan/plan-template.md|||branch: <confirmed branch name>"
-  "plugin/skills/se-plan/plan-template.md|||status: pending"
-  "plugin/skills/se-plan/SKILL.md|||status: \`pending\`"
-  "plugin/skills/se-exec/SKILL.md|||verify the current git branch matches \`branch\`"
-  "plugin/skills/se-exec/SKILL.md|||update \`status\` from \`pending\` to \`in_progress\`"
-  "plugin/skills/se-exec/SKILL.md|||update \`status\` to \`completed\`"
-  "docs/specs/core-workflow/spec-core-workflow.md|||plan frontmatter"
-)
-
-for entry in "${plan_frontmatter_sites[@]}"; do
-  rel="${entry%%|||*}"
-  phrase="${entry##*|||}"
-  file="${REPO_ROOT}/${rel}"
-  if [ ! -f "$file" ]; then
-    fail "plan frontmatter: file not found: ${rel}"
-  elif grep -qF -- "$phrase" "$file" 2>/dev/null; then
-    pass "plan frontmatter contract present in ${rel} (\"${phrase}\")"
-  else
-    fail "plan frontmatter contract missing in ${rel}: expected phrase \"${phrase}\""
-  fi
-done
-
-# Guard against the old plan status enum returning at the canonical contract
-# sites. "Completed Tasks" in handoff templates is a section label, not status.
-old_status_output="$(mktemp)"
-if REPO_ROOT="$REPO_ROOT" node >"$old_status_output" 2>/dev/null <<'NODE'
+lifecycle_contract_output="$(mktemp)"
+if REPO_ROOT="$REPO_ROOT" node >"$lifecycle_contract_output" 2>/dev/null <<'NODE'
 const fs = require('fs');
 const path = require('path');
-const repoRoot = process.env.REPO_ROOT;
-const files = [
-  'plugin/skills/se-plan/plan-template.md',
-  'plugin/skills/se-plan/SKILL.md',
-  'plugin/skills/se-exec/SKILL.md',
-  'docs/specs/core-workflow/spec-core-workflow.md',
-];
-const old = /\b(ToDo|InProgress)\b|status:\s*ToDo|status`\s+to\s+`Completed`|`Completed`/;
-const hits = [];
-for (const rel of files) {
-  const content = fs.readFileSync(path.join(repoRoot, rel), 'utf8');
-  if (old.test(content)) hits.push(rel);
-}
-process.stdout.write(hits.length ? hits.join('\n') : 'ok');
+const root = process.env.REPO_ROOT;
+const read = rel => fs.readFileSync(path.join(root, rel), 'utf8').toLowerCase();
+const plan = read('plugin/skills/se-plan/SKILL.md');
+const exec = read('plugin/skills/se-exec/SKILL.md');
+const template = read('plugin/skills/se-plan/plan-template.md');
+const core = read('docs/specs/core-workflow/spec-core-workflow.md');
+const problems = [];
+const has = (text, terms, label) => {
+  if (!terms.every(term => text.includes(term))) problems.push(label);
+};
+has(template, ['status: pending', 'final review / pr decision'], 'plan template lifecycle entries');
+has(plan, ['status: pending', 'active_plan', 'ledger_status: pending', 'ledger_status: ready', 'fresh session'], 'plan lifecycle ordering');
+has(exec, ['status: completed', 'nonempty checklist', 'missing checklist never completes'], 'completion guard');
+const completionAction = exec.split(/\r?\n/).find(line => {
+  const clause = line.toLowerCase();
+  return /\b(?:set|transition|mark)\w*\b.*\bstatus\b[^a-z0-9]{0,8}completed\b/.test(clause)
+    && clause.includes('only after');
+}) || '';
+has(completionAction, ['required outcomes', 'full work packages', 'proof/review', 'delivery', 'reconciliation'], 'completion prerequisites bound to status action');
+has(exec, ['active_plan', 'ledger_status: ready', 'return to `/se-plan`'], 'execution readiness');
+has(exec, ['/se-handoff', 'clean tree', 'final delivery identity'], 'terminal handoff and delivery boundary');
+has(core, ['missing checklist', 'completed'], 'core completion guard');
+process.stdout.write(problems.length ? problems.join('; ') : 'ok');
 NODE
 then
-  old_status_result="$(<"$old_status_output")"
+  lifecycle_contract_result="$(<"$lifecycle_contract_output")"
 else
-  old_status_result="ERROR"
+  lifecycle_contract_result="ERROR"
 fi
-rm -f "$old_status_output"
-if [ "$old_status_result" = "ok" ]; then
-  pass "old plan status enum is absent from contract sites"
+rm -f "$lifecycle_contract_output"
+if [ "$lifecycle_contract_result" = "ok" ]; then
+  pass "plan and execution lifecycle contracts remain behaviorally bound"
 else
-  fail "old plan status enum found in contract sites:"
-  echo "$old_status_result" | sed 's/^/    /'
+  fail "plan/execution lifecycle contract problem: ${lifecycle_contract_result}"
 fi
-
-# se-exec must not clobber an approved/resume plan pointer during activation.
-activation_contract_sites=(
-  "plugin/skills/se-exec/SKILL.md|||preserve any existing \`active_plan\`"
-  "plugin/skills/se-exec/SKILL.md|||preserve \`branch\` if present"
-  "docs/specs/core-workflow/spec-core-workflow.md|||preserving any existing \`active_plan\`"
-)
-
-for entry in "${activation_contract_sites[@]}"; do
-  rel="${entry%%|||*}"
-  phrase="${entry##*|||}"
-  file="${REPO_ROOT}/${rel}"
-  if [ ! -f "$file" ]; then
-    fail "se-exec activation contract: file not found: ${rel}"
-  elif grep -qF -- "$phrase" "$file" 2>/dev/null; then
-    pass "se-exec activation preserves marker state in ${rel}"
-  else
-    fail "se-exec activation contract missing in ${rel}: expected phrase \"${phrase}\""
-  fi
-done
-
-# active_plan must be written as soon as plan.md exists, not only after human
-# plan approval. Approval may add approved: metadata and gates the fresh-session
-# handoff, but resume/orientation needs a concrete plan path before approval.
-active_plan_timing_sites=(
-  "plugin/skills/se-plan/SKILL.md|||Immediately after the plan file"
-  "plugin/skills/se-plan/SKILL.md|||approval is not the first time \`active_plan\` is recorded"
-  "docs/specs/core-workflow/spec-core-workflow.md|||then immediately record \`active_plan"
-  "docs/specs/core-workflow/spec-core-workflow.md|||approval is not the first time \`active_plan\` is recorded"
-  "plugin/hooks/session-start|||immediately after the plan file"
-)
-
-for entry in "${active_plan_timing_sites[@]}"; do
-  rel="${entry%%|||*}"
-  phrase="${entry##*|||}"
-  file="${REPO_ROOT}/${rel}"
-  if [ ! -f "$file" ]; then
-    fail "active_plan timing: file not found: ${rel}"
-  elif grep -qF -- "$phrase" "$file" 2>/dev/null; then
-    pass "active_plan timing contract present in ${rel}"
-  else
-    fail "active_plan timing contract missing in ${rel}: expected phrase \"${phrase}\""
-  fi
-done
-
-active_plan_old_timing_output="$(mktemp)"
-if REPO_ROOT="$REPO_ROOT" node >"$active_plan_old_timing_output" 2>/dev/null <<'NODE'
-const fs = require('fs');
-const path = require('path');
-const repoRoot = process.env.REPO_ROOT;
-const files = [
-  'plugin/skills/se-plan/SKILL.md',
-  'docs/specs/core-workflow/spec-core-workflow.md',
-  'plugin/hooks/session-start',
-];
-const forbidden = [
-  /active_plan after plan approval/i,
-  /adds active_plan after\s+plan approval/i,
-  /after the plan is approved[^.\n]*active_plan/i,
-  /when the plan is approved[^.\n]*active_plan/i,
-  /when approved[^.\n]*active_plan/i,
-];
-const hits = [];
-for (const rel of files) {
-  const content = fs.readFileSync(path.join(repoRoot, rel), 'utf8');
-  if (forbidden.some((re) => re.test(content))) hits.push(rel);
-}
-process.stdout.write(hits.length ? hits.join('\n') : 'ok');
-NODE
-then
-  active_plan_old_timing_result="$(<"$active_plan_old_timing_output")"
-else
-  active_plan_old_timing_result="ERROR"
-fi
-rm -f "$active_plan_old_timing_output"
-if [ "$active_plan_old_timing_result" = "ok" ]; then
-  pass "active_plan is not documented as approval-only"
-else
-  fail "active_plan still appears approval-gated in contract sites:"
-  echo "$active_plan_old_timing_result" | sed 's/^/    /'
-fi
-
-# Completion detection must not treat legacy plans with no checklist as done.
-completion_guard_sites=(
-  "plugin/skills/se-exec/SKILL.md|||Completion guard"
-  "plugin/skills/se-exec/SKILL.md|||checklist exists, has at least one item"
-  "plugin/skills/se-exec/SKILL.md|||frontmatter \`status: completed\`"
-  "plugin/skills/se-exec/SKILL.md|||tell the user the plan is already completed and stop before steps 3-10"
-  "docs/specs/core-workflow/spec-core-workflow.md|||A missing checklist is never treated as completed"
-)
-
-for entry in "${completion_guard_sites[@]}"; do
-  rel="${entry%%|||*}"
-  phrase="${entry##*|||}"
-  file="${REPO_ROOT}/${rel}"
-  if [ ! -f "$file" ]; then
-    fail "completion guard: file not found: ${rel}"
-  elif grep -qF -- "$phrase" "$file" 2>/dev/null; then
-    pass "completion guard contract present in ${rel}"
-  else
-    fail "completion guard missing in ${rel}: expected phrase \"${phrase}\""
-  fi
-done
-
-# The final PR decision item is fixed session bookkeeping, not implementer work.
-final_pr_sites=(
-  "plugin/skills/se-plan/plan-template.md|||- [ ] Final review / PR decision"
-  "plugin/skills/se-plan/SKILL.md|||not an executable task"
-  "plugin/skills/se-exec/SKILL.md|||step 10 only"
-  "docs/specs/core-workflow/spec-core-workflow.md|||not an executable implementation task"
-)
-
-for entry in "${final_pr_sites[@]}"; do
-  rel="${entry%%|||*}"
-  phrase="${entry##*|||}"
-  file="${REPO_ROOT}/${rel}"
-  if [ ! -f "$file" ]; then
-    fail "final PR checklist: file not found: ${rel}"
-  elif grep -qF -- "$phrase" "$file" 2>/dev/null; then
-    pass "final PR checklist contract present in ${rel}"
-  else
-    fail "final PR checklist contract missing in ${rel}: expected phrase \"${phrase}\""
-  fi
-done
-
-# Checklist marking happens after the outer review is clean, not merely after
-# task implementation verifies green.
-post_review_marking_sites=(
-  "plugin/skills/se-exec/SKILL.md|||task is committed and outer-loop-clean"
-  "docs/specs/core-workflow/spec-core-workflow.md|||after the task is committed and outer-loop-clean"
-)
-
-for entry in "${post_review_marking_sites[@]}"; do
-  rel="${entry%%|||*}"
-  phrase="${entry##*|||}"
-  file="${REPO_ROOT}/${rel}"
-  if [ ! -f "$file" ]; then
-    fail "post-review checklist marking: file not found: ${rel}"
-  elif grep -qF "$phrase" "$file" 2>/dev/null; then
-    pass "post-review checklist marking present in ${rel}"
-  else
-    fail "post-review checklist marking missing in ${rel}: expected phrase \"${phrase}\""
-  fi
-done
-
-# Harness-native task/todo tools are operational session state; plan.md is
-# durable resume state. Keep both contract surfaces present.
-task_sync_sites=(
-  "plugin/skills/se-exec/SKILL.md|||TodoWrite"
-  "plugin/skills/se-exec/SKILL.md|||translated equivalent"
-  "plugin/skills/se-exec/SKILL.md|||operational session state"
-  "plugin/skills/se-exec/SKILL.md|||durable local resume state"
-  "plugin/skills/se-exec/SKILL.md|||update the native task/todo tool first"
-  "plugin/skills/using-super-exec/SKILL.md|||Individual skills don't branch by harness"
-  "docs/specs/core-workflow/spec-core-workflow.md|||native task/todo tool is operational session state"
-)
-
-for entry in "${task_sync_sites[@]}"; do
-  rel="${entry%%|||*}"
-  phrase="${entry##*|||}"
-  file="${REPO_ROOT}/${rel}"
-  if [ ! -f "$file" ]; then
-    fail "task sync: file not found: ${rel}"
-  elif grep -qF "$phrase" "$file" 2>/dev/null; then
-    pass "task sync contract present in ${rel} (\"${phrase}\")"
-  else
-    fail "task sync contract missing in ${rel}: expected phrase \"${phrase}\""
-  fi
-done
-
-# Guidance removed from spec-template.md comments must live in se-discuss.
-spec_guidance_sites=(
-  "plugin/skills/se-discuss/SKILL.md|||acceptance criteria with NO HOW"
-  "plugin/skills/se-discuss/SKILL.md|||no instructional comments"
-  "plugin/skills/se-discuss/SKILL.md|||mirrored to \`CONTEXT.md\`"
-  "plugin/skills/se-discuss/SKILL.md|||hard, surprising, trade-off decisions"
-  "plugin/skills/se-discuss/SKILL.md|||docs/adr/"
-)
-
-for entry in "${spec_guidance_sites[@]}"; do
-  rel="${entry%%|||*}"
-  phrase="${entry##*|||}"
-  file="${REPO_ROOT}/${rel}"
-  if [ ! -f "$file" ]; then
-    fail "spec template guidance: file not found: ${rel}"
-  elif grep -qF "$phrase" "$file" 2>/dev/null; then
-    pass "spec template guidance present in ${rel} (\"${phrase}\")"
-  else
-    fail "spec template guidance missing in ${rel}: expected phrase \"${phrase}\""
-  fi
-done
 
 # ---------------------------------------------------------------------------
 # Check 10 — Template artifacts are copy-pasteable
@@ -1272,10 +1068,9 @@ core_spec_sites=(
   "docs/specs/core-workflow/spec-core-workflow.md|||> Ticket: NO_TICKET  ·  Status: active"
   "docs/specs/core-workflow/spec-core-workflow.md|||four entrypoints"
   "docs/specs/core-workflow/spec-core-workflow.md|||/se-pr-triage"
-  "docs/specs/core-workflow/spec-core-workflow.md|||se-pr-triage/              # + ci-triage.md; post-PR review/CI triage"
-  "docs/specs/core-workflow/spec-core-workflow.md|||## Data Flow"
-  "docs/specs/core-workflow/spec-core-workflow.md|||### Browser/E2E Preflight"
-  "plugin/skills/using-super-exec/references/cursor-tools.md|||impeccable-critique"
+  "docs/specs/core-workflow/spec-core-workflow.md|||## Behavior / Requirements"
+  "docs/specs/core-workflow/spec-core-workflow.md|||Working-increment boundary"
+  "docs/specs/core-workflow/spec-core-workflow.md|||Deferred finding ledger"
 )
 
 for entry in "${core_spec_sites[@]}"; do
@@ -1290,6 +1085,23 @@ for entry in "${core_spec_sites[@]}"; do
     fail "core spec sync missing in ${rel}: expected phrase \"${phrase}\""
   fi
 done
+
+impeccable_owner_result="$(REPO_ROOT="$REPO_ROOT" node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const read = rel => fs.readFileSync(path.join(process.env.REPO_ROOT, rel), 'utf8').toLowerCase();
+const subagent = read('plugin/skills/se-subagent/SKILL.md');
+const plan = read('plugin/skills/se-plan/SKILL.md');
+const valid = subagent.includes('impeccable-critique') && subagent.includes('strong')
+  && plan.includes('impeccable') && plan.includes('dispatch');
+process.stdout.write(valid ? 'ok' : 'impeccable owner/caller mapping missing');
+NODE
+)"
+if [ "$impeccable_owner_result" = "ok" ]; then
+  pass "se-subagent owns impeccable tier and se-plan invokes it"
+else
+  fail "impeccable owner/caller mapping is missing"
+fi
 
 core_spec_forbidden_output="$(mktemp)"
 if REPO_ROOT="$REPO_ROOT" node >"$core_spec_forbidden_output" 2>/dev/null <<'NODE'
@@ -1517,11 +1329,19 @@ echo ""
 echo "Check 14: cursor-tools skill-bundled file path convention"
 
 cursor_tools_ref="${REPO_ROOT}/plugin/skills/using-super-exec/references/cursor-tools.md"
-if grep -qF '@./<file>' "$cursor_tools_ref" 2>/dev/null \
-   && grep -qF "loaded SKILL.md's own location" "$cursor_tools_ref" 2>/dev/null; then
-  pass "cursor-tools.md documents skill-bundled file path convention"
+bundled_path_result="$(REPO_ROOT="$REPO_ROOT" node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const text = fs.readFileSync(path.join(process.env.REPO_ROOT, 'plugin/skills/using-super-exec/references/cursor-tools.md'), 'utf8').toLowerCase();
+const valid = text.includes('@./<file>') && text.includes('@../<skill>/<file>')
+  && text.includes('resolve from loaded skill path');
+process.stdout.write(valid ? 'ok' : 'relative bundled-path resolution missing');
+NODE
+)"
+if [ "$bundled_path_result" = "ok" ]; then
+  pass "cursor-tools.md defines relative bundled and sibling path resolution"
 else
-  fail "cursor-tools.md missing skill-bundled file path convention"
+  fail "cursor-tools.md missing relative bundled/sibling path resolution"
 fi
 
 # ---------------------------------------------------------------------------
@@ -1574,7 +1394,6 @@ for (const heading of orderedHeadings) {
 }
 
 const required = [
-  [skill, 'Gate-1 approval authorizes only the approved Fix work. It never authorizes a PR reply.', 'skill Gate-1 authority'],
   [skill, 'Do not draft, generate, suggest, outline, or present any reply body — provisional, sample, or final — for any decision before step 7.', 'skill no pre-step-7 reply drafting'],
   [skill, 'The rationale is internal analysis for the human, not a draft addressed to the reviewer.', 'skill Gate-1 rationale is not reply copy'],
   [skill, 'First step where any reply text may be drafted.', 'skill reply composition starts at step 7'],
@@ -1588,12 +1407,17 @@ const required = [
   [spec, 'reply composition begins only here, after the step-12 Fix phase has completed', 'spec post-fix reply composition'],
   [spec, 'Final reply approval gate (mandatory)', 'spec Gate-2'],
   [spec, 'placeholders and provisional wording are forbidden', 'spec exact post-fix bodies'],
-  [core, 'Gate-1 decision/Fix approval is never reply approval.', 'core two-gate discipline'],
+  [core, 'Post-PR triage retains two human gates', 'core two-gate discipline'],
+  [core, 'Gate 1 approves decisions and Fix scope only', 'core Gate-1 scope'],
+  [core, 'Gate 2 approves exact final reply target/body', 'core Gate-2 scope'],
   [orientation, 'separately gates the exact final replies before posting', 'orientation two-gate summary'],
   [readme, 'exact final replies are previewed and approved separately after fixes are pushed', 'README user-facing contract'],
 ];
 for (const [content, phrase, label] of required) {
   if (!content.includes(phrase)) problems.push(`missing ${label}: ${phrase}`);
+}
+if (!/Gate-1 approval[\s\S]{0,120}only approved Fix work[\s\S]{0,120}never authorizes a PR reply/i.test(skill)) {
+  problems.push('skill Gate-1 authorizes Fix scope, not replies');
 }
 
 const forbidden = [
@@ -2128,13 +1952,21 @@ if [ -f "$secfg_skill" ]; then
     fail "se-config SKILL.md frontmatter problem: ${secfg_fm}"
   fi
 
-  # disable-model-invocation must be documented for Cursor parity / graceful degradation
+  # Unsupported hosts preserve manual-only intent through read-first behavior.
   cursor_tools_ref="${REPO_ROOT}/plugin/skills/using-super-exec/references/cursor-tools.md"
-  if [ -f "$cursor_tools_ref" ] \
-     && grep -qiE 'disable-model-invocation.*(degrad|graceful)' "$cursor_tools_ref" 2>/dev/null; then
-    pass "cursor-tools.md documents disable-model-invocation Cursor parity/graceful degradation"
+  disable_mapping_result="$(REPO_ROOT="$REPO_ROOT" node <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const text = fs.readFileSync(path.join(process.env.REPO_ROOT, 'plugin/skills/using-super-exec/references/cursor-tools.md'), 'utf8').toLowerCase();
+const has = terms => terms.every(term => text.includes(term));
+const valid = has(['disable-model-invocation', 'manual-only', 'safe read-first', 'mutations require explicit arguments']);
+process.stdout.write(valid ? 'ok' : 'manual-only fallback mapping missing');
+NODE
+)"
+  if [ "$disable_mapping_result" = "ok" ]; then
+    pass "cursor-tools.md maps manual-only behavior with safe read-first fallback"
   else
-    fail "cursor-tools.md must document disable-model-invocation Cursor parity/graceful degradation"
+    fail "cursor-tools.md missing manual-only safe read-first fallback mapping"
   fi
 
   if grep -qF '@./se-config-cli' "$secfg_skill" 2>/dev/null; then
@@ -2721,6 +2553,306 @@ else
   else
     fail "using-super-exec SKILL missing: ${missing_cfg[*]}"
   fi
+fi
+
+# ---------------------------------------------------------------------------
+# Check 23/24 — Compressed workflow and increment-integrity contracts
+# ---------------------------------------------------------------------------
+echo ""
+echo "Check 23/24: Compressed workflow and increment-integrity contracts"
+
+compressed_contract_output="$(mktemp)"
+if REPO_ROOT="$REPO_ROOT" node >"$compressed_contract_output" 2>/dev/null <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const root = process.env.REPO_ROOT;
+const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
+const files = {
+  discuss: read('plugin/skills/se-discuss/SKILL.md'),
+  plan: read('plugin/skills/se-plan/SKILL.md'),
+  exec: read('plugin/skills/se-exec/SKILL.md'),
+  verify: read('plugin/skills/se-verify/SKILL.md'),
+  review: read('plugin/skills/se-review/SKILL.md'),
+  commit: read('plugin/skills/se-commit/SKILL.md'),
+  pr: read('plugin/skills/se-pr/SKILL.md'),
+  triage: read('plugin/skills/se-pr-triage/SKILL.md'),
+  ci: read('plugin/skills/se-pr-triage/ci-triage.md'),
+  cursor: read('plugin/skills/using-super-exec/references/cursor-tools.md'),
+  template: read('plugin/skills/se-plan/plan-template.md'),
+  handoff: read('plugin/skills/se-handoff/handoff-template.md'),
+  subagent: read('plugin/skills/se-subagent/SKILL.md'),
+  core: read('docs/specs/core-workflow/spec-core-workflow.md'),
+  placement: read('docs/specs/se-config-and-artifact-placement/spec-se-config-and-artifact-placement.md'),
+  adr: read('docs/adr/working-increment-execution.md'),
+};
+const problems = [];
+const words = (text, required, label) => {
+  const missing = required.filter(word => !text.toLowerCase().includes(word.toLowerCase()));
+  if (missing.length) problems.push(`${label}: ${missing.join(', ')}`);
+};
+const ordered = (text, actions, label) => {
+  let at = -1;
+  for (const action of actions) {
+    const next = text.toLowerCase().indexOf(action.toLowerCase(), at + 1);
+    if (next < 0 || next <= at) return problems.push(`${label}: ${action}`);
+    at = next;
+  }
+};
+const lineWith = (text, needle) => text.split(/\r?\n/).find(line => line.includes(needle)) || '';
+const reject = (condition, label) => { if (condition) problems.push(label); };
+const checkboxBlocks = text => {
+  const blocks = [];
+  let block = null;
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
+    if (/^\s*-\s+\[\s\]/.test(line)) {
+      if (!block) block = { start: index, end: index, text: '' };
+      block.end = index;
+      block.text += `${line}\n`;
+    } else if (block) {
+      blocks.push(block);
+      block = null;
+    }
+  }
+  if (block) blocks.push(block);
+  return blocks;
+};
+const checklist = (name, text, firstAction, coverage) => {
+  const blocks = checkboxBlocks(text);
+  if (blocks.length !== 1) return problems.push(`${name}: expected one checkbox block, got ${blocks.length}`);
+  const block = blocks[0];
+  const lineAt = text.split(/\r?\n/).slice(0, block.start).join('\n').length;
+  const nearby = text.slice(Math.max(0, lineAt - 400), lineAt + 900);
+  if (!/harness\s+todo-list[\s\S]{0,120}(?:track|sync)[\s\S]{0,160}(?:complete|completion|applicable)/i.test(nearby)) {
+    problems.push(`${name}: harness todo tracking/completion instruction`);
+  }
+  if (lineAt > text.indexOf(firstAction)) problems.push(`${name}: checklist is after first operation`);
+  words(block.text, coverage, `${name} checklist coverage`);
+};
+
+checklist('discuss', files.discuss, '## Start', [
+  'activate', 'local ignore', 'existing/new', 'root', 'WHAT', 'provenance',
+  'split', 'name', 'branch', 'template', 'self-review', 'approval', 'commit', 'plan',
+]);
+checklist('plan', files.plan, '## Activate', [
+  'activate', 'discover', 'dependencies', 'branch', 'research', 'architecture',
+  'proof', 'plan', 'ledger', 'pending', 'ready', 'review', 'approve', 'publish', 'fresh',
+]);
+checklist('exec', files.exec, '## Activate', [
+  'activate', 'readiness', 'config', 'todo', 'durable', 'slice', 'correct',
+  'checkpoint', 'runtime', 'review', 'fix', 'commit', 'reconcile', 'PR', 'handoff',
+]);
+checklist('ci triage', files.ci, '## Diagnose', [
+  'diagnose', 'signal', 'resolve', 'escalate', 'verify', 'review', 'commit', 'push', 'recheck', 'report', 'PR replies',
+]);
+checklist('PR', files.pr, '## 1.', [
+  'choose', 'identity', 'delegate', 'draft', 'evidence', 'create', 'confirm', 'clear',
+]);
+checklist('PR triage', files.triage, '## Session activation', [
+  'detect', 'state', 'actionable', 'track', 'approval', 'fixes', 'replies', 'report', 'clear',
+]);
+
+// Artifact roots, discovery, config, paired publication, and lifecycle.
+words(files.discuss, ['both spec roots', 'Existing spec keeps discovered root', 'commitSpec', 'spec-<feature>.md'], 'spec roots');
+words(files.plan, ['No argument', 'docs/specs/', '.super-exec/specs/', 'Depends on:', 'commitPlan', 'plan-<plan-name>.md'], 'plan discovery/config');
+words(files.plan, ['ledger_status: pending', 'ledger_status: ready', 'validate/preserve', 'commit together'], 'plan ledger/publication');
+words(files.exec, ['humanReviewBeforeCheckpointCommit', 'autoCreatePr', 'status: completed', 'nonempty checklist', 'missing checklist never completes'], 'exec readiness/completion');
+words(files.exec, ['content change invalidates approval', 'reopen', 're-present', 'wait again'], 'approval invalidation');
+words(files.exec, ['required outcomes', 'full work packages', 'current proof/review', 'delivery', 'reconciliation'], 'completion bookkeeping');
+const completionAction = files.exec.split(/\r?\n/).find(line => {
+  const clause = line.toLowerCase();
+  return /\b(?:set|transition|mark)\w*\b.*\bstatus\b[^a-z0-9]{0,8}completed\b/.test(clause)
+    && clause.includes('only after');
+}) || '';
+words(completionAction, ['required outcomes', 'full work packages', 'proof/review', 'delivery', 'reconciliation'], 'status completion prerequisites');
+words(files.exec + files.cursor, ['standing checkpoint-commit authorization', 'standing user authorization'], 'standing authorization');
+
+// WHAT-only artifact writing and shared harness capability mapping.
+words(files.discuss, ['WHAT-only', 'no wrappers/comments', 'Domain terms mirror', 'real alternative trade-off'], 'spec template semantics');
+words(files.cursor, ['Glob', 'file search', 'todo-list read/update'], 'Cursor reference capabilities');
+words(files.plan, ['Final review / PR decision', 'bookkeeping, never executable work'], 'final PR bookkeeping');
+
+// Discussion owner section: use normalized, structural predicates so new
+// frontier detail cannot make an arbitrary regex window hide convergence.
+const discussInterview = files.discuss.split(/\r?\n##\s+/).find(section =>
+  ['design tree', 'frontier', 'shared understanding'].every(marker =>
+    section.toLowerCase().includes(marker)
+  )
+) || '';
+const normalizeDiscuss = text => text
+  .toLowerCase()
+  .replace(/[*_`]/g, '')
+  .replace(/[‐‑‒–—-]/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+const discussNormalized = normalizeDiscuss(discussInterview);
+const hasDiscussTerms = (text, terms) => terms.every(term => text.includes(term));
+const inDiscussOrder = (text, terms) => {
+  let index = -1;
+  for (const term of terms) {
+    index = text.indexOf(term, index + 1);
+    if (index < 0) return false;
+  }
+  return true;
+};
+const discussChecks = [
+  ['decision tree and branches', hasDiscussTerms(discussNormalized, ['design tree', 'decision', 'branches'])],
+  ['frontier settles prerequisites', hasDiscussTerms(discussNormalized, ['frontier', 'prerequisites', 'settled'])],
+  ['round batches current frontier', hasDiscussTerms(discussNormalized, ['whole frontier', 'one round'])],
+  ['facts stay agent research', hasDiscussTerms(discussNormalized, ['finding facts', 'environment', 'sub agent', "don't ask"])],
+  ['unrelated frontier proceeds', hasDiscussTerms(discussNormalized, ['running exploration', 'downstream', 'ask the rest'])],
+  ['empty frontier waits required facts', hasDiscussTerms(discussNormalized, ['every candidate', 'required pending facts', 'await'])],
+  ['responses recompute graph state', hasDiscussTerms(discussNormalized, ['user answers', 'settled decisions', 'reshapes the tree', 'recompute'])],
+  ['dependent questions wait', hasDiscussTerms(discussNormalized, ['depends', 'still open in this round', 'later round'])],
+  ['stable question identifiers', hasDiscussTerms(discussNormalized, ['stable', 'session unique', 'q<number>', 'never reassign', 'retire'])],
+  ['bounded provenance graph', hasDiscussTerms(discussNormalized, ['bound the graph', 'material', 'provenance', 'user request', 'verified current behavior contradiction', 'user approved derived', 'do not add'])],
+  ['user-raised edges stay active', hasDiscussTerms(discussNormalized, ['explicitly user raised edge case', 'active frontier decision', 'accepts', 'explicitly defers', 'rejects', 'stop signal leaves', 'deferred/unapproved'])],
+  ['accepted user edges stay requested', hasDiscussTerms(discussNormalized, ['if accepted', 'core requested requirements', 'user priority', 'regardless of likelihood'])],
+  ['agent-originated concerns defer by default', hasDiscussTerms(discussNormalized, ['agent originated', 'concerns or suggestions', 'default to deferred concerns', 'user promotes'])],
+  ['batching follows scope filter', hasDiscussTerms(discussNormalized, ['scope/provenance filter', 'structured harness question interaction'])],
+];
+for (const [label, passed] of discussChecks) {
+  if (!passed) problems.push(`discuss dependency interview: ${label}`);
+}
+const sourceQuestionFormat = /❓\s+\*\*Q1\*\*[\s\S]*<question title>[\s\S]*➡️\s+<your recommended answer>/.test(discussInterview);
+if (!sourceQuestionFormat) problems.push('discuss dependency interview: usable source question format');
+const frontierViolation = text => {
+  const normalized = normalizeDiscuss(text);
+  const serial = hasDiscussTerms(normalized, ['ask each question', 'separately']);
+  const downstream = hasDiscussTerms(normalized, ['include', 'downstream', 'current batch']);
+  const prematureSpec = hasDiscussTerms(normalized, ['write spec', 'first round'])
+    && (normalized.includes('choices remain') || normalized.includes('decisions remain'));
+  const expandsScope = hasDiscussTerms(normalized, ['every imaginable edge case', 'frontier']);
+  const autoPromotesAgentConcern = hasDiscussTerms(normalized, ['agent concerns', 'requirements automatically']);
+  const blanketDefersUnlikelyEdge = hasDiscussTerms(normalized, ['defer every unlikely edge case']);
+  const defersUserRaisedConcern = hasDiscussTerms(normalized, ['user raised concerns', 'deferred concerns', 'without asking']);
+  return serial || downstream || prematureSpec || expandsScope || autoPromotesAgentConcern
+    || blanketDefersUnlikelyEdge || defersUserRaisedConcern;
+};
+const unnumberedBatch = text => {
+  const normalized = normalizeDiscuss(text);
+  return hasDiscussTerms(normalized, ['whole frontier', 'question'])
+    && !/(?:q<number>|q\d+)/i.test(text);
+};
+for (const [label, opposite] of [
+  ['serial questions', 'Ask each question separately.'],
+  ['downstream batch', 'Include downstream questions in current batch.'],
+  ['premature spec', 'Write spec after first round while choices remain.'],
+  ['unbounded edge cases', 'Add every imaginable edge case to the frontier.'],
+  ['automatic agent requirements', 'Agent concerns become requirements automatically.'],
+  ['blanket unlikely-edge deferral', 'Defer every unlikely edge case.'],
+  ['user-raised default deferral', 'Put user-raised concerns in Deferred concerns without asking.'],
+  ['unnumbered batch', 'Ask the whole frontier with each question and recommendation.'],
+]) {
+  const escaped = label === 'unnumbered batch'
+    ? !unnumberedBatch(opposite)
+    : !frontierViolation(opposite);
+  if (escaped) problems.push(`discuss synthetic opposite escaped: ${label}`);
+}
+reject(frontierViolation(files.discuss), 'discuss permits a serial, downstream, or premature-spec contract');
+reject(unnumberedBatch(files.discuss), 'discuss permits unnumbered frontier questions');
+const convergenceScope = discussNormalized;
+for (const [signal, rule] of [
+  ['proceed signal', /\bproceed\b/i],
+  ['implement signal', /\bimplement\b/i],
+  ['stop-asking signal', /\bstop[\s,/-]+asking\b/i],
+]) {
+  if (!rule.test(convergenceScope)) problems.push(`discussion convergence: ${signal}`);
+}
+if (!inDiscussOrder(discussNormalized, ['material', 'what', 'acceptance', 'priority', 'first value'])) {
+  problems.push('discussion convergence: material choice dimensions');
+}
+if (!inDiscussOrder(convergenceScope, ['frontier', 'empty', 'shared understanding'])) {
+  problems.push('discussion convergence: frontier-empty shared-understanding guard');
+}
+const actsBeforeSharedUnderstanding = discussInterview.split(/\r?\n/).some(line => {
+  const normalized = normalizeDiscuss(line);
+  return /\b(?:write|create|act|run|enter)\b/.test(normalized)
+    && /\b(?:before|until)\b/.test(normalized)
+    && normalized.includes('shared understanding')
+    && !/\b(?:do not|never|only after)\b/.test(normalized);
+});
+reject(actsBeforeSharedUnderstanding, 'discussion convergence permits acting before shared understanding');
+if (!hasDiscussTerms(convergenceScope, [
+  'settled', 'answered', 'requested', 'approved requirements',
+  'unanswered', 'unsettled', 'deferred', 'unapproved', 'never infer',
+])) {
+  problems.push('discussion convergence: stop leaves unresolved decisions deferred');
+}
+const coreDiscuss = normalizeDiscuss(files.core.split(/\r?\n###\s+/).find(section =>
+  /\bdependency graph\b/.test(section) && /\bshared understanding\b/.test(section)
+) || '');
+if (!hasDiscussTerms(coreDiscuss, ['each question', 'own', 'recommended answer'])) {
+  problems.push('core discussion graph: per-question recommendation');
+}
+if (!hasDiscussTerms(coreDiscuss, ['user request', 'verified current behavior contradiction', 'explicit user approval', 'explicitly user raised', 'stays in the frontier', 'if accepted', 'core requested requirement', 'regardless of likelihood', 'agent originated', 'default to deferred'])) {
+  problems.push('core discussion graph: provenance and branch boundaries');
+}
+words(files.plan + files.exec, ['re-slices', 'working increments', 'Plan task order/file maps are evidence'], 'adaptable increment boundary');
+words(files.exec, ['full detected baseline', 'normal distributable/deployed/user proof', 'proof/review', 'delivery', 'reconciliation'], 'proof to reconciliation');
+ordered(files.exec, ['gate-open', 'wait approval', 'clear marker', '/se-commit'], 'checkpoint approval order');
+ordered(files.exec, ['/se-verify', '/se-review', '/se-commit'], 'reviewed delivery order');
+words(files.exec, ['clean tree', 'HEAD', 'final delivery identity', 'blocked-limitation', 'blocked-review'], 'delivery and terminal gates');
+words(files.exec, ['priority/order-only correction', 'approved spec amendment', 'correction inventory'], 'correction gates');
+words(files.verify + files.review + files.triage + files.ci, ['standalone-triage'], 'triage verification boundary');
+words(files.pr, ['final delivery identity', 'tree-equivalence proof', 'clean-working-tree evidence', 'deferred-findings-<plan-name>.md'], 'PR delivery inputs');
+words(files.handoff + files.template, ['deferred-findings-<plan-name>.md', 'Reconciliation'], 'handoff and template ledger');
+words(files.verify + files.subagent, ['PASS', 'FAIL', 'LIMITATION'], 'verdict propagation');
+words(files.review, [
+  'meaningful duplicate code/reuse defect', 'duplicate finding fingerprint',
+  'At most two scoped re-review rounds', 'At bound', 'blocked-review',
+], 'review convergence');
+words(files.core + files.placement + files.adr, ['ledger_status: pending', 'ledger_status: ready', 'plan and ready canonical ledger', 'committed-root'], 'documented ledger invariants');
+
+// Final PR gate: arm → identify/dispose → approve → clear → choose safe PR action.
+const autoPrOff = lineWith(files.exec, 'Auto-PR ON');
+ordered(autoPrOff, ['gate-open', 'final identity', 'disposition', 'matching approval', 'clear marker', 'PR-safe action'], 'Auto-PR OFF final gate ordering');
+reject(/(?:skip|bypass|omit)[^.\n]{0,80}(?:approval|gate-open)/i.test(autoPrOff), 'Auto-PR OFF bypasses approval or gate');
+
+// A summary follows unresolved work, never mere ledger history.
+const prSummary = lineWith(files.pr, 'unresolved entries exist');
+words(prSummary, ['summary', 'unresolved entries', 'neither', 'PR path', 'omit'], 'PR unresolved-summary requirement');
+reject(/(?:non-?empty|closed-only)[^.\n]{0,80}ledger/i.test(prSummary), 'PR summary triggers from non-actionable ledger history');
+
+// Plan activation moves one canonical ledger forward without erasing history.
+ordered(files.plan, ['ledger_status: pending', 'Create missing', 'Valid ledger', 'ledger_status: ready'], 'ledger pending-create-validate-ready ordering');
+words(files.plan, ['Existing ledger is durable history', 'validate/preserve'], 'ledger preserves existing history');
+words(files.placement, ['never overwrite or reseed'], 'ledger never reseeds existing history');
+reject(/ledger_status:\s*ready[\s\S]{0,120}(?:before|then).*create/i.test(files.plan), 'ledger becomes ready before canonical creation');
+
+// LIMITATION stops autonomous fixing until the governing spec is resolved.
+const limitation = lineWith(files.exec, '`LIMITATION` is never PASS');
+words(limitation, ['blocked-limitation', 'skip review/commit/PR/checklist/completion', 'governing-spec approval/amendment'], 'LIMITATION terminal handling');
+reject(/(?:dispatch|invoke|route|loop)[^.\n]{0,80}fixer/i.test(limitation), 'LIMITATION enters a fixer loop');
+
+// Correction removes or explicitly retains obsolete delivered behavior before reslicing/finalization.
+const correction = lineWith(files.exec, 'Inventory every committed identity/behavior');
+words(correction, ['obsolete', 'focused verify/review', '/se-commit', 'retention approval', 'before re-slicing'], 'correction cleanup before reslice');
+words(files.core + files.adr, ['every committed delivery identity', 'completed working increment', 'supporting checkpoint'], 'correction inventory covers all delivery forms');
+reject(/re-slic(?:e|ing)[\s\S]{0,120}inventory/i.test(correction), 'correction reslices before inventory cleanup');
+
+// Runtime slicing and scoped reviews prevent frozen-plan or whole-spec-per-task regressions.
+words(files.plan + files.exec, ['re-slices', 'working increments', 'evidence, never execution authority'], 'runtime-discovered increments');
+reject(/for each working increment/i.test(files.plan), 'plan predefines working increments');
+words(files.review, ['changed paths', 'focused verification evidence'], 'scoped checkpoint review');
+reject(/whole-spec.*task|per-task.*whole-spec/i.test(files.exec + files.review), 'whole-spec review required per task');
+
+// Sibling ledger names must stay plan-derived; reject the legacy bare filename.
+words(files.plan + files.exec + files.pr + files.handoff, ['deferred-findings-<plan-name>.md'], 'plan-derived deferred ledger name');
+reject(/(?:^|[^\w-])deferred-findings\.md\b/i.test(files.plan + files.exec + files.review + files.pr + files.handoff + files.template + files.triage + files.ci), 'bare deferred ledger filename remains');
+
+process.stdout.write(problems.length ? problems.join('\n') : 'ok');
+NODE
+then
+  compressed_contract_result="$(<"$compressed_contract_output")"
+else
+  compressed_contract_result="ERROR"
+fi
+rm -f "$compressed_contract_output"
+if [ "$compressed_contract_result" = "ok" ]; then
+  pass "compressed workflows retain checklist and lifecycle behavior contracts"
+else
+  fail "compressed workflow behavior contract problem:"
+  echo "$compressed_contract_result" | sed 's/^/    /'
 fi
 
 echo ""

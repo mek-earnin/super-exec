@@ -22,12 +22,12 @@ Dispatch every subagent with the **`Task` tool**, setting `model` explicitly to 
 
 ## Runner → judge verify split
 
-Verification splits into **two separate subagent contexts** — nothing runs inline in the controller:
+`/se-verify` owns verification packet and verdict semantics. Dispatch preserves its canonical verdict unchanged; controller handles flow from that verdict, never re-labels it.
 
-1. **Runner (cheap / `haiku`)** — runs the baseline suite + task-specific checks in its own throwaway context; returns only structured **EVIDENCE** (exit codes, pass/fail counts, relevant log excerpts, screenshot paths). Never interprets results; raw build/test output never enters the controller's context.
-2. **Judge / verifier (strong / `opus`)** — evaluates that EVIDENCE against the spec + plan and renders an explicit PASS/FAIL with specific findings. Only role that reasons about correctness.
+1. **Runner (cheap / `haiku`)** — runs `/se-verify` scope against review identity; returns structured evidence only.
+2. **Judge (strong / `opus`)** — evaluates evidence against spec/plan; renders exact `PASS`, `FAIL`, or `LIMITATION`. Reject changed content. `/se-commit` decides delivery equivalence.
 
-Rule: the controller dispatches, waits for the runner's evidence summary, then dispatches the judge. No verification logic runs inline.
+Controller dispatches runner, then judge; no inline verification. `PASS` and `FAIL` follow `/se-verify`; `LIMITATION` reaches `blocked-limitation` immediately and never enters fixer loop.
 
 ## Pinned-to-Sonnet policy (implementer / fixer)
 
@@ -37,5 +37,5 @@ On Claude Code the implementer and fixer tiers are **pinned to `sonnet`** regard
 
 - **Delegate by default.** Build, test, wide search, long review, and git/`gh` → subagents that report a summary; never inline in the controller.
 - **Parallelism rule.** Independent tasks that touch **completely disjoint file sets** may be dispatched in parallel. Any two tasks sharing even one file run sequentially. When in doubt, sequential.
-- **Targeted context.** Give a fixer only the specific finding + relevant acceptance criteria + the plan's architectural context — never the full review.
+- **Targeted context.** Fixer gets finding, acceptance, relevant architecture—not full review. Every packet includes review identity; other evidence is stale.
 - **Controller stays lean.** Raw file diffs and raw command output stay in the subagent; only summaries and evidence cross back.

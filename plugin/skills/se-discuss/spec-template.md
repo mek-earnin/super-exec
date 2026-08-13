@@ -11,7 +11,14 @@
 <Out-of-scope items.>
 
 ## Behavior / Requirements
-<Acceptance criteria.>
+### Core requested requirements
+<User-stated acceptance criteria.>
+
+### Approved derived requirements
+<Discussion/research-derived requirements; keep provenance and priority clear.>
+
+### Deferred concerns
+<Approved concerns not accepted as current behavior, or `None.`>
 
 ## Domain terms
 <Domain terms.>

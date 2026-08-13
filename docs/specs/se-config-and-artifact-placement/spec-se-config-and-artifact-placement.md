@@ -71,9 +71,12 @@ With `<root>` = the chosen root (including the optional `<app>` segment):
 - Spec: `<root>/<feature>/spec-<feature>.md`
 - Plan: `<root>/<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md`
 - Handoff: the SAME folder as its plan → `handoff-<plan-name>.md`
+- Deferred finding ledger: the SAME folder as its plan → `deferred-findings-<plan-name>.md`
 - Feature-specific ADR: `<root>/<feature>/adr/<slug>.md`
 
 Rules:
+- Plan activation records `active_plan`, canonical sibling ledger path, and `ledger_status: pending`; se-plan creates and validates `deferred-findings-<plan-name>.md`, then marks status `ready`. A pending, absent, or non-ready ledger blocks execution and returns to planning repair.
+- If the sibling ledger is absent, create it even when empty and one-time seed non-required Discuss/spec deferred concerns. If it exists, it is canonical durable history: preserve entries, dispositions, and evidence; never overwrite or reseed it. It follows plan's resolved root and commit treatment. For committed-root publication, plan and ready canonical ledger pass through same approval/review and `/se-commit` together; neither is committed alone. Plans, handoffs, and active state retain ledger path/status only, never ledger rows.
 - A spec/feature is identified by its `<feature>` slug ALONE — there are no running numbers anywhere in the layout. The slug is unique within a specs tree. Removing the shared numeric counter is deliberate: parallel agents in one worktree can never collide on a "next number".
 - Because commit status varies per artifact, any skill that locates or auto-discovers a spec/plan MUST scan BOTH roots (union), regardless of the current config value.
 - Ordering and dependencies between features are expressed via the spec's `Depends on:` header, not by a numeric sequence. Auto-discovery (e.g. se-plan) lists unplanned specs (those with no plan folder) and asks which to plan rather than picking a numeric "lowest".
