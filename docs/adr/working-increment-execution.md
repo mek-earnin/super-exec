@@ -20,7 +20,7 @@ Supporting layer, component, and infrastructure checkpoints remain useful. They 
 
 Full baseline verification, real-runtime proof, architecture review, and deep review occur at working-increment boundaries. Final completion still requires whole-spec proof over all approved requirements.
 
-Plan activation is two-phase durable state: se-plan records active plan and canonical ledger path as `ledger_status: pending`, creates or validates the ledger, then records `ready`. Execution rejects incomplete, mismatched, or missing ledger state and returns to planning repair. An existing ledger is durable history, not a template: preserve its entries, dispositions, and evidence; create/seed only when absent. A committed-root plan publishes with its ready canonical ledger through the same review and commit flow.
+Plan activation is two-phase durable state: se-plan records active plan and canonical ledger path as `ledger_status: pending`, creates or validates the ledger, then records `ready`. **Plan-backed** execution rejects incomplete, mismatched, or missing ledger state and returns to planning repair. **Skip-plan** execution may start without a plan or ledger; see `exec-from-spec-or-interview`. An existing ledger is durable history, not a template: preserve its entries, dispositions, and evidence; create/seed only when absent. A committed-root plan publishes with its ready canonical ledger through the same review and commit flow.
 
 ### Invariants
 

@@ -5,17 +5,17 @@ description: Use when starting any new feature, fix, or task — orientation to 
 
 # super-exec
 
-Full workflow vague idea → PR — less babysitting, enforced discipline, repo conventions preserved. Runs `spec → plan → execute → verify → review → PR` → sessions ship real work, not half-finished attempts.
+Full workflow vague idea → PR — less babysitting, enforced discipline, repo conventions preserved. Runs `spec → [plan] → execute → verify → review → PR` → sessions ship real work, not half-finished attempts. Plan is optional: **skip-plan** when work is already small and clear, so architecture/data-flow planning would not improve implementation.
 
-**Reach for these proactively.** User starts feature work — "let's build X", "add Y", "change how Z works" — invoke `/se-discuss`, don't dive into code; spec ready → `/se-plan`; plan ready → `/se-exec`. Don't need user to name the skill. Match work to stage, use it. (Trivial one-line fixes skip the full workflow — judge when it fits.)
+**Reach for these proactively.** User starts feature work — "let's build X", "add Y", "change how Z works" — invoke `/se-discuss`, don't dive into code. Then either skip-plan → `/se-exec` in the same session, or `/se-plan` → `/se-exec` in a fresh session. Don't need user to name the skill. Match work to stage, use it. (Trivial one-line fixes skip the full workflow — judge when it fits.)
 
 ## The four entrypoint skills
 
 Ships as **skills only** — no separate slash commands. Invoke each as `/se-discuss`, `/se-plan`, `/se-exec`, or `/se-pr-triage` (or the model auto-invokes on match). On entry each writes the `.super-exec/active` session marker → guards live. Behavior identical whether invoked manually or automatically.
 
-- `/se-discuss` — **Design session.** From a raw idea or task description, interview to one or more reviewed specs (one per cohesive feature — a multi-feature session splits into separate specs with your confirmation), then auto-chain into `/se-plan` for the first spec after approval. Specs land under a config-driven root (`docs/specs/` committed or `.super-exec/specs/` local) as `<root>/[<app>/]<feature>/spec-<feature>.md` (slug-only).
+- `/se-discuss` — **Design session.** From a raw idea or task description, interview to one or more reviewed specs (one per cohesive feature — a multi-feature session splits into separate specs with your confirmation). After the first approval it shows the next step: skip-plan → `/se-exec` in this same session, or `/se-plan`. Work too small to record a spec is **skip-spec**: settled interview answers are the task spec, and `/se-exec` auto-invokes in this session with no plan and no spec gate. Specs land under a config-driven root (`docs/specs/` committed or `.super-exec/specs/` local) as `<root>/[<app>/]<feature>/spec-<feature>.md` (slug-only).
 - `/se-plan` — **Plan / re-plan / re-entry.** Turn a spec into an architecture + verification plan, revise an existing plan, or (no argument) pick up the next unplanned spec from a split. Plans land under either root as `<root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md`. The **plan → execute boundary stays a hard fresh-session step** — never auto-chained.
-- `/se-exec` — **Build session.** Select smallest working increments from approved plan outcomes, prove them through normal user paths, and use supporting checkpoints for focused progress. Owns resume, durable increment state, commit cadence, and final PR/no-PR decision.
+- `/se-exec` — **Build session.** Builds from a reviewed plan, or on skip-plan from the approved spec or task spec — a ready plan and ledger are not the only entry. Select smallest working increments from those outcomes, prove them through normal user paths, and use supporting checkpoints for focused progress. Owns resume, durable increment state, commit cadence, and final PR/no-PR decision.
 - `/se-pr-triage` — **Post-PR triage session.** Manual entrypoint; not auto-chained from `/se-pr`. Runs one loop-safe triage round: Track A first gates review-comment decisions and Fix scope, then after successful pushes separately gates the exact final replies before posting; Track B investigates and resolves CI failures autonomously with no PR replies. Neither Track A gate auto-approves under `/loop`.
 
 ## Config & support skills
@@ -50,7 +50,7 @@ This is a **best-effort** override that wins by **specificity, not volume**: it 
 
 - **Delegate heavy work to subagents.** Exploration, research, parallel file edits go to agents — keep the main thread for decisions and verification.
 - **Verify before claiming done.** Working increments need full baseline plus normal user/distributable-path evidence; lower-layer, mocked, and scripted checks remain supporting evidence.
-- **Scope guard.** Each session works only the steps in the current plan. Out-of-scope changes are deferred, not sneaked in.
+- **Scope guard.** Each session works only what the current plan — or on skip-plan the governing spec or task spec — covers. Out-of-scope changes are deferred, not sneaked in.
 - **Reuse before writing.** Search the codebase for existing patterns, utilities, conventions before adding new ones.
 - **Repo conventions win.** Follow the project's existing style, tooling, structure — don't impose external preferences.
 - **Commit routinely; pending human review is the only block.** Supporting-checkpoint commits are part of the workflow, but never commit while a human review is pending (`.super-exec/gate-open`). The detailed toggle and host-policy resolution lives in `/se-exec` and the harness reference docs.

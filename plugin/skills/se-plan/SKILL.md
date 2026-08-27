@@ -5,7 +5,7 @@ description: Use when a spec is agreed and it's time to decide HOW — architect
 
 # se-plan — Plan Phase
 
-Design approved architecture, task bindings, traceability, and proof; write `plan-<plan-name>.md`. `/se-discuss` auto-chains first approved spec; manual re-entry may re-plan or choose next unplanned split spec. Tasks are evidence, never immutable increments—`/se-exec` re-slices without dropping requirements/contracts.
+Design approved architecture, task bindings, traceability, and proof; write `plan-<plan-name>.md`. Plan is not mandatory after discuss: `/se-discuss` auto-chains its first approved spec here only when user or model chose plan at spec approval — skip-plan writes no plan, ledger, or `active_plan` and goes straight to `/se-exec`. Manual re-entry may re-plan or choose next unplanned split spec. Tasks are evidence, never immutable increments—`/se-exec` re-slices without dropping requirements/contracts.
 
 ## Operational checklist
 
@@ -42,7 +42,7 @@ Use [plan-template.md](./plan-template.md) exactly: frontmatter `title`, `featur
 
 Read `commitPlan` from `/se-get-config`, based on physical governing-spec root: `"inheritSpec"` → same root; `false` → `.super-exec/specs/`; `"ask"` → local spec stays local, committed spec asks local vs committed. Never commit a plan over local spec. Write `<root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md`; feature slug exactly matches spec, plan name follows `/se-slug-naming`, date is today. Repo basename/`package.json` name collision → halt and ask.
 
-Atomically record `active_plan`, sibling `ledger_path`, `ledger_status: pending`, `phase: plan`. Create missing `deferred-findings-<plan-name>.md` (empty allowed), one-time seed only non-required Discuss/spec concerns with provenance. Existing ledger is durable history: validate/preserve, update only changed scope. Fields: fingerprint; normalized scenario/invariant; affected behavior/path; source/evidence; likelihood/impact/effort/confidence/fix complexity; disposition/status; promotion trigger. Never put rows in traceability. Valid ledger → `ledger_status: ready`; failure stays pending—do not approve/publish/execute.
+Atomically record `active_plan`, sibling `ledger_path`, `ledger_status: pending`, `phase: plan`. Drop any leftover `mode: skip-plan` and skip-plan `spec:` sentinel from `.super-exec/active` — a later `/se-exec` must see plan-backed, not a stale skip-plan discriminator. Create missing `deferred-findings-<plan-name>.md` (empty allowed), one-time seed only non-required Discuss/spec concerns with provenance. Existing ledger is durable history: validate/preserve, update only changed scope. Fields: fingerprint; normalized scenario/invariant; affected behavior/path; source/evidence; likelihood/impact/effort/confidence/fix complexity; disposition/status; promotion trigger. Never put rows in traceability. Valid ledger → `ledger_status: ready`; failure stays pending—do not approve/publish/execute.
 
 ## Review and handoff
 

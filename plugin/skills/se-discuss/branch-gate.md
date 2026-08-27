@@ -34,9 +34,9 @@ Run after the feature slug is stable, before writing the spec file.
 - **Resolve branch-name convention by precedence.** Follow the three-step precedence rule (see "Convention precedence" below). Surface the resolved convention before proposing the name.
 - **Construct + confirm the branch name.** Present the proposed ticket value + branch name; accept or adjust before proceeding. This confirmation is durable for the approval/commit step; don't ask again unless facts changed, branch creation fails, or checkout conflicts.
 
-## Phase C: create/switch confirmed branch (after spec approval)
+## Phase C: create/switch confirmed branch (after spec approval, or skip-spec proceed)
 
-Run only after the user approves the already-written spec and the next action is committing artifacts.
+Run after the user approves the already-written spec and the next action is committing artifacts — or, on skip-spec, after `proceed` / `implement` / `stop asking` authorizes the branch before first exec commit. Skip-spec has no spec file to commit.
 
 - **Re-check current branch.** On the confirmed branch → continue. On any other branch (protected or not) → switch/create before committing artifacts. Do not commit approved spec changes on a non-matching branch.
 - **Inspect dirty state before switching.** Approved review artifacts (`docs/specs/` OR `.super-exec/specs/`, plus `GLOSSARY.md` / `GLOSSARY-MAP.md`, ADRs) are expected dirty. Other dirty files (incl. unasked `CONTEXT.md` / `CONTEXT-MAP.md`) → surface; don't stage. Don't require a clean tree to proceed.
@@ -85,7 +85,7 @@ Use only when neither (a) nor (b) applies.
 |---|---|
 | "I'll block the first interview question until branch context finishes." | Don't wait. Start Phase A in the background, keep interviewing. |
 | "I'll ask for the ticket before I know what the task is." | Defer ticket prompting to Phase B unless the ticket is needed to understand the first request. |
-| "The user confirmed the branch in Phase B, but I'll ask again after approval." | Don't ask again unless facts changed, branch creation failed, or checkout conflicts. Phase B confirmation + spec approval authorizes Phase C. |
+| "The user confirmed the branch in Phase B, but I'll ask again after approval." | Don't ask again unless facts changed, branch creation failed, or checkout conflicts. Phase B confirmation + spec approval authorizes Phase C. Skip-spec: Phase B confirmation + `proceed`/`implement`/`stop asking` authorizes Phase C. |
 | "I'll hide the spec draft in `.super-exec/` until approval." | Wrong. A new spec is written to its `commitSpec`-resolved root; an existing-spec update stays at its discovered path. THAT file is the review surface — do not relocate or stash it elsewhere to dodge review. Only the commit (when the resolved root is `docs/specs/`) waits for Phase C. |
 | "There are unrelated dirty files, so I need to clean/stash them before switching." | Don't mutate unrelated work. Surface it, carry it if git allows, rely on `/se-commit` staging isolation so only approved artifact paths are committed. |
 | "Checkout conflicts with dirty files, so I'll stash or overwrite to get unstuck." | Stop and ask. Uncommitted work may be the user's or the approved review artifact; never stash, discard, or rewrite it without explicit user direction. |

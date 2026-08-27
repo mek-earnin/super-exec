@@ -17,7 +17,7 @@ Controller supplies:
 - approved contracts, not optional HOW/design evidence;
 - normal-path runtime proof and transition evidence for boundary/final scopes;
 - known supported regressions, affected invariants, prior review disposition;
-- separate plan-folder deferred ledger `deferred-findings-<plan-name>.md`, where `<plan-name>` derives from active plan filename.
+- separate plan-folder deferred ledger `deferred-findings-<plan-name>.md` when a plan exists, where `<plan-name>` derives from active plan filename. Skip-plan with no ledger: omit the ledger; do not invent a plan folder.
 
 Recompute identity before accepting evidence. Different-revision evidence is stale; rerun scope. `/se-commit` owns staging and delivery equivalence. Record pending work as pending, never finding. Consult ledger; do not reopen unchanged fingerprint.
 
@@ -39,7 +39,7 @@ After runtime PASS, independent reviewers assess:
 
 ### Final
 
-Require final full baseline and whole-spec normal-path proof after review fixes. Review whole traceability and approved contracts, then revalidate ledger. Any final-review code fix invalidates prior final proof; se-exec reruns final verification and this scoped final review on current revision.
+Require final full baseline and whole-spec normal-path proof after review fixes. Review whole traceability and approved contracts, then revalidate ledger when one exists. Skip-plan with no ledger skips ledger revalidation. Any final-review code fix invalidates prior final proof; se-exec reruns final verification and this scoped final review on current revision.
 
 ### Standalone triage
 

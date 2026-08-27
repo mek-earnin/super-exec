@@ -252,17 +252,30 @@ if [ -f "${SUPER_EXEC_DIR}/active" ]; then
   #   active_plan: <root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md
   # The marker remains the active-session signal for guards; active_plan adds the
   # concrete plan target for resume/execute sessions.
+  trim_marker_value() {
+    local value="$1"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    value="${value%\"}"
+    value="${value#\"}"
+    value="${value%\'}"
+    value="${value#\'}"
+    printf '%s' "$value"
+  }
+
   active_plan=""
+  marker_mode=""
+  marker_spec=""
   while IFS= read -r marker_line; do
     case "$marker_line" in
       active_plan:*)
-        active_plan="${marker_line#active_plan:}"
-        active_plan="${active_plan#"${active_plan%%[![:space:]]*}"}"
-        active_plan="${active_plan%"${active_plan##*[![:space:]]}"}"
-        active_plan="${active_plan%\"}"
-        active_plan="${active_plan#\"}"
-        active_plan="${active_plan%\'}"
-        active_plan="${active_plan#\'}"
+        active_plan="$(trim_marker_value "${marker_line#active_plan:}")"
+        ;;
+      mode:*)
+        marker_mode="$(trim_marker_value "${marker_line#mode:}")"
+        ;;
+      spec:*)
+        marker_spec="$(trim_marker_value "${marker_line#spec:}")"
         ;;
     esac
   done < "${SUPER_EXEC_DIR}/active"
@@ -288,13 +301,29 @@ if [ -f "${SUPER_EXEC_DIR}/active" ]; then
     fi
   fi
 
+  # Skip-plan has no plan file. Do not fall back to latest-plan discovery —
+  # that would point resume at an unrelated stale plan.
+  #
+  # `mode: skip-plan` is the ONLY discriminator. The producers (se-discuss when
+  # it routes into same-session /se-exec, and se-exec on skip-plan activation)
+  # write it alongside `spec:`. Skip-plan is never INFERRED from "has spec: and
+  # no active_plan" — a plan-phase marker legitimately carries spec: before the
+  # plan file exists, and inferring there would strand it in skip-plan
+  # orientation instead of letting it fall through to latest-plan discovery.
+  skip_plan_context=""
+  if [ -z "$plan_context" ] && [ -z "$invalid_plan_context" ] \
+     && [ "$marker_mode" = "skip-plan" ]; then
+    skip_plan_context="${marker_spec:-task spec (unwritten interview WHAT)}"
+  fi
+
   # Fallback when the marker does not name a concrete plan: discover the most
   # recently modified plan file across BOTH roots and BOTH layouts.
   #   v1: <root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md
   #   v0: .super-exec/[<app>/]<feature>/<plan-dir>/plan.md
   # (<root> = .super-exec/specs OR docs/specs.) Best-effort orientation only —
   # the active_plan marker above stays authoritative whenever it is present.
-  if [ -z "$plan_context" ] && [ -z "$invalid_plan_context" ]; then
+  # Skip-plan markers must not use this fallback.
+  if [ -z "$plan_context" ] && [ -z "$invalid_plan_context" ] && [ -z "$skip_plan_context" ]; then
     discovery_roots=()
     [ -d "${SUPER_EXEC_DIR}" ] && discovery_roots+=("${SUPER_EXEC_DIR}")
     [ -d "${PROJECT_DIR}/docs/specs" ] && discovery_roots+=("${PROJECT_DIR}/docs/specs")
@@ -324,6 +353,8 @@ if [ -f "${SUPER_EXEC_DIR}/active" ]; then
     resume_note="\n\n---\n**${resume_header}**\n\nA super-exec session is active (marker age: ${active_mtime:-unknown}).\n${plan_label}: ${plan_context}\n\n${resume_instruction} If this marker appears stale (the timestamp above is old relative to the current date), surface that to the user and ask whether to clear it — do NOT auto-delete the marker.\n---"
   elif [ -n "$invalid_plan_context" ]; then
     resume_note="\n\n---\n**SUPER-EXEC SESSION IN PROGRESS (active plan invalid)**\n\nA super-exec \`active\` marker exists (marker age: ${active_mtime:-unknown}). ${invalid_plan_context}. Surface this to the user; do NOT silently choose a different plan and do NOT auto-delete the marker.\n---"
+  elif [ -n "$skip_plan_context" ]; then
+    resume_note="\n\n---\n**SUPER-EXEC SESSION IN PROGRESS (skip-plan)**\n\nA super-exec skip-plan session is active (marker age: ${active_mtime:-unknown}).\nGoverning spec: ${skip_plan_context}\n\nYou can resume this session with \`/se-exec\`. Do NOT pick a plan from disk and do NOT auto-delete the marker.\n---"
   else
     resume_note="\n\n---\n**SUPER-EXEC SESSION IN PROGRESS (no in-progress plan found)**\n\nA super-exec \`active\` marker exists (marker age: ${active_mtime:-unknown}) but no in-progress plan file was found under \`.super-exec/\` or \`docs/specs/\`. This may indicate the session never advanced past discuss/plan, or the plan directory was cleaned up. If the marker looks stale, surface that to the user. Do NOT auto-delete the marker.\n---"
   fi

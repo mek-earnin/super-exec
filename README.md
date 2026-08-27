@@ -8,14 +8,20 @@ Core flow:
 discuss -> plan -> exec -> PR / triage
 ```
 
+Planning is a step, not a tax. When the work is already small and clear, super-exec skips the plan and builds in the same session:
+
+```text
+discuss -> exec -> PR / triage
+```
+
 You keep the approval points. super-exec does the research, planning, verification, review, and PR prep in between.
 
 ## Why Use It
 
 super-exec is built for teams that want agent speed without constant babysitting:
 
-- Turns loose intent into a reviewed spec before implementation starts.
-- Separates WHAT from HOW, then builds from that agreed plan.
+- Turns loose intent into a reviewed spec when the work deserves one, and lets tiny changes to an existing feature build straight from the settled interview answers.
+- Separates WHAT from HOW, then builds from the agreed spec or plan.
 - Keeps heavy searches, builds, tests, and reviews out of the main session when possible.
 - Proves working increments through normal user or distributable paths; tests, mocks, and scripted states support that proof but do not replace it.
 - Prefers the target repo's own skills and conventions for branches, commits, PRs, tests, and local dev.
@@ -49,13 +55,15 @@ If `superpowers` is also installed, super-exec is intended to drive the feature 
 
 Run `/se-discuss` when starting a new feature or behavior change. The agent asks only questions that still change requested behavior, priority, or acceptance; “proceed,” “implement,” and corrections stop obsolete questions immediately. Specs distinguish core user requests from approved derived requirements and deferred concerns.
 
-### 2. Plan
+Not every change earns a durable spec. New features always get one, and an existing feature that already has a spec gets that spec updated — but tiny work on an existing feature can skip the spec entirely and execute from the settled interview answers, which govern the build in its place.
 
-Planning turns the approved spec into architecture contracts, outcomes, dependencies, requirement traceability, and runtime proof paths. File maps remain design evidence; execution can choose working increments without changing approved behavior.
+### 2. Plan (when it helps)
+
+Planning turns the approved spec into architecture contracts, outcomes, dependencies, requirement traceability, and runtime proof paths. File maps remain design evidence; execution can choose working increments without changing approved behavior. When architecture and data flow would not improve the implementation, the agent recommends skipping the plan instead of spending tokens on it — you can always ask for one.
 
 ### 3. Exec
 
-Run `/se-exec` in a fresh session when ready to build. The agent selects smallest coherent end-to-end working increments, uses focused checkpoint commits for enabling work, and runs full baseline/runtime proof plus deep review only at increment boundaries. Later approved requirements stay pending until their increment, then all remain required before final completion. A verified technical limitation stops completion and PR creation until a human approves the governing-spec resolution (and re-plans an architecture change); Auto-PR does not bypass that gate.
+Run `/se-exec` in a fresh session after a plan, or in the same session right after discuss when the plan was skipped. The agent selects smallest coherent end-to-end working increments, uses focused checkpoint commits for enabling work, and runs full baseline/runtime proof plus deep review only at increment boundaries. Later approved requirements stay pending until their increment, then all remain required before final completion. A verified technical limitation stops completion and PR creation until a human approves the governing-spec resolution (and re-plans an architecture change); Auto-PR does not bypass that gate.
 
 ### 4. PR / Triage
 
@@ -65,9 +73,9 @@ The workflow can open a draft PR when the build is ready. After a PR exists, `/s
 
 | Entrypoint | Use it for |
 |---|---|
-| `/se-discuss` | Start from an idea, ticket, or desired change and produce a reviewed spec. |
+| `/se-discuss` | Start from an idea, ticket, or desired change and produce a reviewed spec — or, for small work, go straight to building. |
 | `/se-plan` | Re-enter or revise planning for an existing spec. |
-| `/se-exec` | Build from a reviewed plan, verify the work, review it, and prepare the PR. |
+| `/se-exec` | Build from a reviewed plan, or from the spec or agreed task when planning was skipped; verify the work, review it, and prepare the PR. |
 | `/se-pr-triage` | Handle review comments through separate fix and final-reply approvals, plus autonomous CI triage. |
 | `/se-config` | Inspect or set placement and behavior config (tiered), and migrate a v0 repo to the v1 layout. |
 
@@ -96,7 +104,7 @@ Values merge over three tiers: repo-local `.super-exec/se-config.local.json` > u
 
 ## Artifacts
 
-Specs and plans use a slug-only, per-feature layout. `se-config` chooses new-artifact roots: committed under `docs/specs/` for the team, or kept local under `.super-exec/specs/` (gitignored). Existing spec updates stay in their current root without another placement prompt. Handoffs and separate `deferred-findings-<plan-name>.md` ledgers follow the plan's root, while session state (the active marker and gate files) always stays under `.super-exec/`.
+Specs and plans use a slug-only, per-feature layout. `se-config` chooses new-artifact roots: committed under `docs/specs/` for the team, or kept local under `.super-exec/specs/` (gitignored). Existing spec updates stay in their current root without another placement prompt. Handoffs and separate `deferred-findings-<plan-name>.md` ledgers follow the plan's root; with no plan, the handoff stays local. Session state (the active marker and gate files) always stays under `.super-exec/`.
 
 Detailed workflow contracts and implementation-specific behavior live in the source-of-truth files:
 

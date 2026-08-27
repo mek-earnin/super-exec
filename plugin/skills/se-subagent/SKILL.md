@@ -1,6 +1,6 @@
 ---
 name: se-subagent
-description: Load whenever a super-exec skill is about to dispatch a subagent or pick a model tier. Not user-invokable.
+description: MUST use BEFORE dispatching a subagent or picking a model tier. 
 user-invocable: false
 ---
 

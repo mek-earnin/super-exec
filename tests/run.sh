@@ -583,6 +583,73 @@ else
     fail "SessionStart ignored active_plan marker when newer plan existed"
   fi
 
+  # Skip-plan resume: marker has mode: skip-plan + spec, no active_plan, and a
+  # stale plan exists on disk. Orientation must name the governing spec and
+  # must NOT pick that unrelated plan.
+  skipplanrepo="${ttmp}/skip-plan-marker-repo"
+  mkdir -p "$skipplanrepo/.super-exec" \
+           "$skipplanrepo/docs/specs/stale-feature/plans/2026-06-22-stale-plan"
+  ( cd "$skipplanrepo" && git init -q ) 2>/dev/null || true
+  stale_plan="${skipplanrepo}/docs/specs/stale-feature/plans/2026-06-22-stale-plan/plan-stale-plan.md"
+  printf '%s\n' '---' 'title: Stale' 'status: in_progress' '---' '# Stale' > "$stale_plan"
+  printf 'phase: exec\nmode: skip-plan\nspec: docs/specs/core-workflow/spec-core-workflow.md\n' \
+    > "${skipplanrepo}/.super-exec/active"
+  skipplan_output=$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
+    CLAUDE_PROJECT_DIR="$skipplanrepo" CLAUDE_PLUGIN_ROOT="${REPO_ROOT}/plugin" \
+    "$HOOK" 2>/dev/null </dev/null || true)
+  if printf '%s' "$skipplan_output" | grep -q 'skip-plan' \
+     && printf '%s' "$skipplan_output" | grep -q 'docs/specs/core-workflow/spec-core-workflow.md' \
+     && ! printf '%s' "$skipplan_output" | grep -q 'stale-feature'; then
+    pass "SessionStart skip-plan resume uses governing spec, not latest-plan discovery"
+  else
+    fail "SessionStart skip-plan resume picked a disk plan or dropped the spec"
+  fi
+
+  # Skip-plan must NOT be inferred. A marker with `spec:` but no `mode:` (a
+  # plan-phase marker written before the plan file exists) must still fall
+  # through to latest-plan discovery — the old "spec: && no active_plan"
+  # inference wrongly captured it as skip-plan.
+  nomoderepo="${ttmp}/no-mode-marker-repo"
+  nomodeplandir="${nomoderepo}/docs/specs/shipping/plans/2026-07-20-label-v1"
+  mkdir -p "$nomodeplandir" "${nomoderepo}/.super-exec"
+  ( cd "$nomoderepo" && git init -q ) 2>/dev/null || true
+  printf '%s\n' '---' 'title: Label v1' 'status: in_progress' '---' '# Label' \
+    > "${nomodeplandir}/plan-label-v1.md"
+  printf 'phase: exec\nspec: docs/specs/shipping/spec-shipping.md\n' \
+    > "${nomoderepo}/.super-exec/active"
+  nomode_output=$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
+    CLAUDE_PROJECT_DIR="$nomoderepo" CLAUDE_PLUGIN_ROOT="${REPO_ROOT}/plugin" \
+    "$HOOK" 2>/dev/null </dev/null || true)
+  if printf '%s' "$nomode_output" | grep -q 'Feature: shipping' \
+     && printf '%s' "$nomode_output" | grep -q '2026-07-20-label-v1' \
+     && ! printf '%s' "$nomode_output" | grep -qF 'SESSION IN PROGRESS (skip-plan)'; then
+    pass "SessionStart does not infer skip-plan from spec: without mode: skip-plan"
+  else
+    fail "SessionStart inferred skip-plan from a spec-only marker (output: ${nomode_output:0:200})"
+  fi
+
+  # Leftover mode: skip-plan plus a resolvable active_plan: plan-backed wins.
+  # se-plan should have dropped the mode; if it didn't, the hook still must
+  # not hide the real plan behind a skip-plan note.
+  bothrepo="${ttmp}/both-mode-and-plan-repo"
+  bothplandir="${bothrepo}/.super-exec/both-feature/2026-06-22-both-plan"
+  mkdir -p "$bothplandir"
+  ( cd "$bothrepo" && git init -q ) 2>/dev/null || true
+  both_plan="${bothplandir}/plan.md"
+  printf '%s\n' '---' 'title: Both' 'status: in_progress' '---' '# Both' > "$both_plan"
+  printf 'phase: exec\nmode: skip-plan\nspec: task-spec\nactive_plan: %s\n' "$both_plan" \
+    > "${bothrepo}/.super-exec/active"
+  both_output=$(env -i PATH="$PATH" HOME="${HOME:-/tmp}" \
+    CLAUDE_PROJECT_DIR="$bothrepo" CLAUDE_PLUGIN_ROOT="${REPO_ROOT}/plugin" \
+    "$HOOK" 2>/dev/null </dev/null || true)
+  if printf '%s' "$both_output" | grep -q 'both-feature' \
+     && printf '%s' "$both_output" | grep -q '2026-06-22-both-plan' \
+     && ! printf '%s' "$both_output" | grep -qF 'SESSION IN PROGRESS (skip-plan)'; then
+    pass "SessionStart plan-backed wins when mode: skip-plan leftover sits next to active_plan"
+  else
+    fail "SessionStart hid a real plan behind leftover skip-plan mode (output: ${both_output:0:200})"
+  fi
+
   # If the active plan frontmatter says status: completed, the orientation note
   # must not call it in-progress. se-exec remains the authority on whether to
   # resume or stop, but the hook should not mislabel cheap metadata it can parse.
@@ -2854,6 +2921,110 @@ if [ "$compressed_contract_result" = "ok" ]; then
 else
   fail "compressed workflow behavior contract problem:"
   echo "$compressed_contract_result" | sed 's/^/    /'
+fi
+
+# ---------------------------------------------------------------------------
+# Check 25 — Skip-plan / skip-spec routing after discuss
+# ---------------------------------------------------------------------------
+# Discuss no longer always chains into /se-plan: small, clear work skips the
+# plan (and, with no spec worth recording, skips the spec too) and enters
+# /se-exec in the same session. These checks fail if that routing is dropped
+# or if skip-plan exec is sent back to /se-plan for a missing plan/ledger.
+echo ""
+echo "Check 25: Skip-plan / skip-spec routing"
+
+skip_plan_output="$(mktemp)"
+if REPO_ROOT="$REPO_ROOT" node >"$skip_plan_output" 2>/dev/null <<'NODE'
+const fs = require('fs');
+const path = require('path');
+const root = process.env.REPO_ROOT;
+const read = rel => fs.readFileSync(path.join(root, rel), 'utf8');
+const files = {
+  discuss: read('plugin/skills/se-discuss/SKILL.md'),
+  plan: read('plugin/skills/se-plan/SKILL.md'),
+  exec: read('plugin/skills/se-exec/SKILL.md'),
+  handoff: read('plugin/skills/se-handoff/SKILL.md'),
+  review: read('plugin/skills/se-review/SKILL.md'),
+  using: read('plugin/skills/using-super-exec/SKILL.md'),
+  readme: read('README.md'),
+};
+const problems = [];
+const words = (text, required, label) => {
+  const missing = required.filter(word => !text.toLowerCase().includes(word.toLowerCase()));
+  if (missing.length) problems.push(`${label}: ${missing.join(', ')}`);
+};
+const reject = (condition, label) => { if (condition) problems.push(label); };
+const lineWith = (text, pattern) => text.split(/\r?\n/).find(line => pattern.test(line)) || '';
+
+// Discuss routes to skip-plan/skip-spec instead of always planning.
+words(files.discuss, [
+  'skip-plan', 'skip-spec', 'task spec', 'session-boundary spec',
+  'same-session `/se-exec`', 'skip-spec vs write-spec',
+], 'discuss skip routing');
+reject(/single:\s*auto-invoke\s*`?\/se-plan/i.test(files.discuss), 'discuss still auto-invokes /se-plan unconditionally');
+words(files.discuss, ['never ask skip-plan vs plan'], 'discuss forbids plan on the skip-spec path');
+
+// Producers must WRITE the marker contract the hook and se-exec consume:
+// `mode: skip-plan` + `spec:` in .super-exec/active. Asserting only the hook
+// consumer let a release ship where nothing ever wrote mode: skip-plan.
+words(files.discuss, [
+  '.super-exec/active', 'mode: skip-plan', 'task-spec',
+], 'discuss writes the skip-plan marker fields');
+const discussMarkerLine = lineWith(files.discuss, /mode: skip-plan/i);
+words(discussMarkerLine, ['`spec:`', 'before'], 'discuss writes spec: before invoking exec');
+words(files.exec, ['mode: skip-plan', '`spec:`'], 'exec reads/writes the skip-plan marker fields');
+words(files.handoff, ['mode: skip-plan', 'session-boundary spec'], 'handoff preserves the skip-plan marker');
+
+// Skip-plan exec is a first-class activation mode, never bounced to se-plan.
+words(files.exec, ['skip-plan', 'task spec', 'activation mode'], 'exec skip-plan mode');
+const skipPlanLine = lineWith(files.exec, /never return to `\/se-plan`/i);
+words(skipPlanLine, ['skip-plan', 'missing plan or ledger'], 'exec skip-plan missing-ledger tolerance');
+// Skip-plan is a marker field, never inferred from an absent active_plan.
+words(files.exec, ['never infer skip-plan from a missing `active_plan`'], 'exec forbids inferring skip-plan');
+words(files.exec, ['plan-backed wins'], 'exec leftover skip-plan yields to a resolvable active_plan');
+words(files.plan, ['Drop any leftover `mode: skip-plan`'], 'plan clears leftover skip-plan mode');
+words(files.review, ['Skip-plan with no ledger'], 'review skips ledger when skip-plan has none');
+
+// Skip-spec keeps slug naming and the branch gate, and drops only the spec.
+words(files.discuss, [
+  '/se-slug-naming', 'branch-gate Phase B', 'skip presenting a spec',
+], 'skip-spec keeps slug and branch gate');
+
+// Plan stays optional and keeps its fresh-session boundary.
+words(files.plan, ['skip-plan', 'not mandatory', 'fresh session'], 'plan optionality');
+
+// Skip-plan handoff has no plan folder.
+words(files.handoff, ['skip-plan', 'handoff-<plan-name>.md', '.super-exec/handoff-<feature>.md'], 'handoff skip-plan path');
+
+// Orientation and landing page describe both routes.
+words(files.using, ['skip-plan', 'same session', 'task spec'], 'orientation skip-plan');
+reject(/auto-chain into `\/se-plan`/i.test(files.using), 'orientation still claims discuss always auto-chains to /se-plan');
+words(files.readme, ['skip'], 'README mentions skipping the plan');
+
+process.stdout.write(problems.length ? problems.join('\n') : 'ok');
+NODE
+then
+  skip_plan_result="$(<"$skip_plan_output")"
+else
+  skip_plan_result="ERROR"
+fi
+rm -f "$skip_plan_output"
+if [ "$skip_plan_result" = "ok" ]; then
+  pass "skip-plan / skip-spec routing is encoded in the skills"
+else
+  fail "skip-plan / skip-spec routing problem:"
+  echo "$skip_plan_result" | sed 's/^/    /'
+fi
+
+# The hook's skip-plan branch must key off the explicit `mode: skip-plan` field
+# only. The old inference ("marker has spec: and no active_plan") swallowed
+# ordinary plan-phase markers, so it must stay deleted.
+SESSION_START_HOOK="${REPO_ROOT}/plugin/hooks/session-start"
+if grep -qF '[ "$marker_mode" = "skip-plan" ]' "$SESSION_START_HOOK" 2>/dev/null \
+   && ! grep -qE '\[ -n "\$marker_spec" \][[:space:]]*&&[[:space:]]*\[ -z "\$active_plan" \]' "$SESSION_START_HOOK" 2>/dev/null; then
+  pass "session-start gates skip-plan on mode: skip-plan, with no spec-only inference"
+else
+  fail "session-start skip-plan branch is missing the mode gate or still infers from spec:"
 fi
 
 echo ""
