@@ -116,7 +116,7 @@ super-exec must deliver approved behavior quickly without losing verification, r
 - Plan-backed work: plan detects baseline and names normal runtime path before execution. Skip-plan: `/se-exec` detects baseline and names the normal runtime path from the governing spec or task spec.
 - UI, browser, E2E, deployed, and distributable checks record startup/launch evidence, readiness, artifact identity, and user-visible outcome as applicable.
 - No controller runs heavy verification/review inline.
-- Model tiers remain role-based: strong non-fast for discuss/plan/review/judgment, mid for implementation/fix, latest available non-fast GPT Luna for runners/finders under Cursor mapping, with non-fast Composer or an equivalent cheap-tier model as fallback.
+- Model tiers remain role-based: strong non-fast for discuss/plan/review/judgment (Cursor: latest grok xhigh when listed, else highest listed grok; GPT Sol or Opus as fallback or second opinion), mid for implementation/fix (Cursor: latest grok high), latest available non-fast GPT Luna for runners/finders under Cursor mapping (effort is the allowlisted luna slug, not a pinned medium/high), with non-fast Composer or an equivalent cheap-tier model as fallback when no luna slug is listed. Dispatch always picks from the live tool allowlist; names in docs are examples, never a host-specific allowlist.
 
 ## Artifacts & locations
 

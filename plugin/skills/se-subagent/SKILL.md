@@ -31,7 +31,7 @@ Controller dispatches runner, then judge; no inline verification. `PASS` and `FA
 
 ## Pinned-to-Sonnet policy (implementer / fixer)
 
-On Claude Code the implementer and fixer tiers are **pinned to `sonnet`** regardless of the user's session model. Skills that spawn an implementer or fixer **must set `model` explicitly to `sonnet`** — never inherit or omit it. Rationale: the session model may be `opus` (planning/review) or `haiku` (script-running); neither is right for editing code at mid-task scope. Pinning prevents cost blowout (Opus writing every file) and context degradation (Haiku making structural calls it can't reason through). On Cursor the equivalent is latest cursor-grok-* high (e.g. `cursor-grok-4.5-high`; see `using-super-exec/references/cursor-tools.md` for the full tier mapping).
+On Claude Code the implementer and fixer tiers are **pinned to `sonnet`** regardless of the user's session model. Skills that spawn an implementer or fixer **must set `model` explicitly to `sonnet`** — never inherit or omit it. Rationale: the session model may be `opus` (planning/review) or `haiku` (script-running); neither is right for editing code at mid-task scope. Pinning prevents cost blowout (Opus writing every file) and context degradation (Haiku making structural calls it can't reason through). On Cursor the equivalent is latest `cursor-grok-*` high (see `using-super-exec/references/cursor-tools.md` for the full tier mapping).
 
 ## Dispatch discipline
 
