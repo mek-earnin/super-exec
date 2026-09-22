@@ -1,6 +1,9 @@
 # <Feature>
 > Ticket: <TICKET-ID | NO_TICKET>  ·  Status: <draft | active | superseded>  ·  Depends on: <feature-slug | none>
 
+## Domain terms
+<Domain terms.>
+
 ## Problem / Why
 <Problem statement.>
 
@@ -19,9 +22,6 @@
 
 ### Deferred concerns
 <Approved concerns not accepted as current behavior, or `None.`>
-
-## Domain terms
-<Domain terms.>
 
 ## Decisions
 <Decisions.>
