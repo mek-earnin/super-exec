@@ -7,7 +7,7 @@ description: Use to fix and improve a PR that has review comments or CI failures
 
 Controller for **one triage round** after a PR is open with feedback. Processes two independent tracks per invocation:
 
-- **Track A** (review comments — inline threads + review summaries): two mandatory human gates — first approve/steer decisions + Fix scope, then, after successful fixes are pushed, approve the exact final replies.
+- **Track A** (review comments — inline threads + review summaries): two mandatory human gates — first approve/steer decisions + Fix scope, then, after successful fixes are pushed, approve the exact final replies — ordered explanation-heavy first, with the brief full-fix replies last.
 - **Track B** (CI failures): investigated + resolved autonomously — no approval gate, no PR replies.
 
 Round finishes → report both tracks → exit. Continuous watching = wrap in `/loop`; no built-in polling.
@@ -23,19 +23,21 @@ Controller stays lean. Delegate all MCP calls, git ops, and heavy execution to s
 Complete every item in order. Do not skip or reorder. Do not advance past a step until it is confirmed done.
 Use harness todo-list tool to load and track this checklist. Sync status as work changes; before delivery or completion claim, verify every applicable item complete.
 
-- [ ] **1. Activate session and apply local ignore**
-- [ ] **2. Detect the target PR**
-- [ ] **3. Read triage state (state reader subagent)**
-- [ ] **4. Determine what is actionable in each track**
-- [ ] **5. Triage Track A decisions**
-- [ ] **6. Mandatory decision approval gate (Gate 1)**
-- [ ] **7. Execute approved Track A fixes**
-- [ ] **8. Compose exact final replies**
-- [ ] **9. Mandatory final reply approval gate (Gate 2)**
-- [ ] **10. Post exact approved replies**
-- [ ] **11. Execute Track B (autonomous)**
-- [ ] **12. End-of-round report**
-- [ ] **13. Clear `.super-exec/active`**
+- [ ] **Pre-step. Activate session and apply local ignore**
+- [ ] **1. Detect the target PR**
+- [ ] **2. Read triage state (state reader subagent)**
+- [ ] **3. Determine what is actionable in each track**
+- [ ] **4. Triage Track A decisions**
+- [ ] **5. Mandatory decision approval gate (Gate 1)**
+- [ ] **6. Execute approved Track A fixes**
+- [ ] **7. Compose exact final replies**
+- [ ] **8. Mandatory final reply approval gate (Gate 2)**
+- [ ] **9. Post exact approved replies**
+- [ ] **10. Execute Track B (autonomous)**
+- [ ] **11. End-of-round report**
+- [ ] **12. Clear `.super-exec/active`**
+
+Checklist numbers match the section numbers below. Every cross-reference in this skill names the step, never its number.
 
 ---
 
@@ -79,45 +81,67 @@ If both tracks are empty (nothing actionable), report that and exit immediately.
 
 For each in-scope Track A item, the controller assigns exactly one decision:
 
-- **Fix** — comment identifies a valid defect; code should change.
-- **Decline** — comment is invalid, out of scope, or requests needless complexity for a case the code cannot actually reach. Reply explains why; no code change.
-- **Answer** — a human question or discussion point that warrants a reply but no code change.
-- **Defer** — a valid suggestion out of scope for this PR; reply acknowledges it as a future follow-up. No ticket or file is created.
+| Decision | Code change | Meaning |
+|---|---|---|
+| **Decline** | no | Invalid, out of scope, or needless complexity for a case the code cannot actually reach. |
+| **Fix (partial)** | yes | Valid in part; the change covers the in-scope part and intentionally leaves the rest undone. |
+| **Answer** | no | A question or discussion point that needs no code change. |
+| **Defer** | no | A valid suggestion out of scope for this PR. No ticket or file is created. |
+| **Fix** | yes | Valid defect, and the change covers everything the comment asks for. |
+
+Those rows are also the **presentation order**: every time Track A items are shown to the human — Gate 1, Gate 2, the round report — sort them top row first. Explanation-heavy items come while attention is fresh; full fixes, where the pushed code already answers the comment, land last.
 
 Two standing rules apply to every triage decision:
 
 - **Realism rule.** Bots do not know the full data flow or whether an end user can reach a given path. A comment that adds defensive complexity for a case the system cannot receive is a Decline, not a Fix.
 - **Spec authority.** A comment requesting behavior that contradicts the spec (at `<root>/[<app>/]<feature>/spec-<feature>.md` under either `docs/specs/` or `.super-exec/specs/`) defaults to Decline, with a citation of the relevant spec section. The skill never silently changes spec-defined behavior. The human may override the decision at Gate 1.
 
-For each Fix, the controller drafts a short summary (one to two sentences) of what the fix will change, which the human reviews at Gate 1. This summary is a work plan, not reviewer-facing message copy. **Do not draft, generate, suggest, outline, or present any reply body — provisional, sample, or final — for any decision before step 7.**
+Every decision carries a **human-facing rationale**, and every `Fix` / `Fix (partial)` also carries a short **fix summary** (one to two sentences) of what the change will do — a partial summary also names what it leaves undone. Both are work-planning notes for the human at Gate 1, and both obey one shape: third person, about the item, at most two lines each. No second person, no `@mention`, no greeting, no sign-off, no promise addressed to a reviewer. Text shaped to be pasted into a thread is a reply body, and **no reply body — provisional, sample, or final — may be drafted, generated, suggested, outlined, or presented for any decision before the Compose exact final replies step.**
 
 ## 5. Mandatory decision approval gate (Gate 1)
 
-Present ALL Track A items together in a single prompt to the human before pushing any Fix. For each item include the original comment (with permalink or stable ID), proposed triage decision + rationale, and — for Fix items — the short fix summary. The rationale is internal analysis for the human, not a draft addressed to the reviewer. Include no proposed, suggested, sample, provisional, or final reply message. The human approves or steers the decisions and Fix scope in one shot.
+Present ALL Track A items together in a single prompt to the human before pushing any Fix, in presentation order. Each item carries exactly these fields and no others:
+
+| Field | Content |
+|---|---|
+| Target | the original comment, with permalink or stable ID |
+| Decision | one of Decline / Fix (partial) / Answer / Defer / Fix |
+| Rationale | the human-facing rationale, in the shape the triage step requires |
+| Fix summary | `Fix` and `Fix (partial)` only — what the change will do, and for partial what it leaves undone |
+
+This gate has no reply field. The human approves or steers the decisions and Fix scope in one shot.
 
 Gate-1 approval authorizes only approved Fix work; it never authorizes a PR reply. No Track A Fix is pushed until this gate is explicitly approved. There is no auto-approve mode, even when se-pr-triage is wrapped in `/loop`.
 
 ## 6. Execute approved Track A fixes
 
-Process only the Gate-1-approved Fix items. Decline / Answer / Defer items wait untouched for the final-reply steps; do not dispatch any reply poster yet.
+Process only the Gate-1-approved `Fix` and `Fix (partial)` items. Decline / Answer / Defer items wait untouched for the final-reply steps; do not dispatch any reply poster yet.
 
-- **Fix items:** dispatch an **implementer subagent (mid tier, pinned to `sonnet` on Claude Code)** via the `Task` tool to make the code change. Then invoke `/se-verify` and `/se-review` in `standalone-triage` mode with PR-comment acceptance inputs, changed paths, and immutable identity; this preserves Critical/Important blocking behavior without active-increment artifacts. Once green/reviewed, commit via `/se-commit` (pass explicit files — `/se-commit` owns staging/message), push, and confirm.
+- **Fix / Fix (partial) items:** dispatch an **implementer subagent (mid tier, pinned to `sonnet` on Claude Code)** via the `Task` tool to make the code change. Then invoke `/se-verify` and `/se-review` in `standalone-triage` mode with PR-comment acceptance inputs, changed paths, and immutable identity; this preserves Critical/Important blocking behavior without active-increment artifacts. Once green/reviewed, commit via `/se-commit` (pass explicit files — `/se-commit` owns staging/message), push, and confirm.
 
-  If the actual implementation must materially differ from the Gate-1-approved fix summary, return that item to Gate 1 before committing or pushing. If a Fix cannot be made green, reviewed clean, or confirmed pushed, abort that item: do not create a reply candidate, leave the thread untouched, and flag it in the round report as needing human attention. The remaining approved items still complete.
+  If the actual implementation must materially differ from the Gate-1-approved fix summary, return that item to Gate 1 before committing or pushing. The same applies when the change ends up covering less than the comment asked for: it returns to Gate 1 as `Fix (partial)` with the leftover named. If a Fix cannot be made green, reviewed clean, or confirmed pushed, abort that item: do not create a reply candidate, leave the thread untouched, and flag it in the round report as needing human attention. The remaining approved items still complete.
 
 ## 7. Compose exact final replies
 
-First step where any reply text may be drafted. Only after every successful Fix is confirmed pushed, compose the final reply batch. If there are no Fix items, step 6 is a no-op after Gate 1; do not move reply composition into initial triage. For each non-aborted Track A item include:
+First step where any reply text may be drafted. Only after every successful Fix is confirmed pushed, compose the final reply batch. If there are no Fix items, the Fix-execution step is a no-op after Gate 1; do not move reply composition into initial triage.
 
-- the exact target comment/review permalink and stable ID;
-- the final triage decision; and
-- the **exact final reply body** that would be posted.
+Every non-aborted Track A item becomes one candidate carrying the exact target comment/review permalink and stable ID, the final triage decision, and the **exact final reply body** that would be posted. Candidates sit in presentation order, so the `Fix` replies form the last block.
 
-A Fix reply must describe the actual implemented result and include its real pushed commit SHA or URL. Placeholders such as `<SHA>` and provisional implementation wording are forbidden. An aborted or unpushed Fix is shown as non-postable for visibility but excluded from reply candidates. A round with only Decline / Answer / Defer items still performs this step after Gate 1.
+The decision sets what the body owes the reviewer:
+
+| Decision | Reply body must |
+|---|---|
+| **Decline** | say why the comment does not hold, citing the spec section when spec authority applies |
+| **Fix (partial)** | say what changed, with the pushed commit SHA or URL, and what was left undone and why |
+| **Answer** | answer the question |
+| **Defer** | say it is a valid follow-up outside this PR's scope |
+| **Fix** | say what changed, with the pushed commit SHA or URL, in one or two sentences — the code is the answer, so no rationale prose, no restating the comment, no alternatives |
+
+A body aimed at a bot also includes that bot's tag (e.g. `@coderabbitai`); the poster posts verbatim and cannot add it later. Placeholders such as `<SHA>` and provisional implementation wording are forbidden. An aborted or unpushed Fix is shown as non-postable for visibility but excluded from reply candidates. A round with only Decline / Answer / Defer items still performs this step after Gate 1.
 
 ## 8. Mandatory final reply approval gate (Gate 2)
 
-Present ALL final reply candidates together and wait. The human may approve, edit, or skip each reply. **Gate 2 is independent of Gate 1: no PR reply is authorized until the human explicitly approves this exact post-fix target-and-body batch.** There is no auto-approve mode, even under `/loop`.
+Present ALL final reply candidates together in presentation order and wait. Everything above the `Fix` block is reviewed item by item; the `Fix` block is there to be skimmed and may be approved as one batch. The human may approve, edit, or skip any reply. **Gate 2 is independent of Gate 1: no PR reply is authorized until the human explicitly approves this exact post-fix target-and-body batch.** There is no auto-approve mode, even under `/loop`.
 
 Content-only edits can be approved in this gate. A requested decision or Fix-scope change returns that item to Gate 1. Any reply target or body change after Gate-2 approval invalidates that approval; re-present the changed batch and wait again. If every reply is skipped, post nothing and continue to the round report.
 
@@ -125,7 +149,7 @@ Content-only edits can be approved in this gate. A requested decision or Fix-sco
 
 Immediately before posting, revalidate each approved target: it must still be unresolved/in-scope and have no reply from us. If live state changed, skip it untouched and report why; new comments belong to the next round.
 
-When replying to bots (in-thread or top-level), always tag it. E.g. replaying to CodeRabbit, always tag `@coderabbitai` in the reply body.
+Bot tags are authored in the compose step, not here — the poster cannot add one.
 
 Dispatch a **runner subagent (cheap tier)** with only the immutable target ID and exact Gate-2-approved body for each still-valid reply. The poster must post the body verbatim — never rewrite, expand, summarize, or substitute any text. For an inline review-comment thread, post in-thread via GitHub MCP `add_reply_to_pull_request_comment`; for a top-level review summary, post a top-level PR comment via `add_issue_comment` referencing the review. Do not auto-resolve threads. A Gate-2-skipped reply remains untouched and may resurface as actionable in a later stateless round.
 
@@ -133,13 +157,13 @@ Dispatch a **runner subagent (cheap tier)** with only the immutable target ID an
 
 Dispatch a **runner/implementer subagent** via the `Task` tool to work through every in-scope CI failure following the full procedure in [`ci-triage.md`](./ci-triage.md). In summary: Track B reads check runs, maps each failure to its mirror status comment for the human-readable reason, reads the raw failure log only when the comment lacks enough detail, and resolves per signal type — flaky tests rerun once, real failures fixed through the same `/se-verify` + `/se-review` loops and pushed, non-test failures (lint, type-check, PR-title, SonarCloud, Cycode) fixed at the source. Track B never posts a PR reply; the resolution is a green check. It escalates to the round report — and only to the round report — when the situation is unusual and the agent is unsure what to do.
 
-Track A Fix execution (step 6) and Track B execution (step 10) are independent. Run in parallel only if no file overlap exists between Track A fixes and Track B fixes; otherwise run sequentially. Track B never bypasses, auto-approves, or delays either Track A gate. When in doubt, run sequentially.
+Track A fix execution and Track B execution are independent. Run in parallel only if no file overlap exists between Track A fixes and Track B fixes; otherwise run sequentially. Track B never bypasses, auto-approves, or delays either Track A gate. When in doubt, run sequentially.
 
 ## 11. End-of-round report
 
 After both tracks complete, report on the full round:
 
-- **Track A:** per in-scope comment — triage decision, Fix result, reply action (posted / skipped at Gate 2 / withheld after live-state revalidation / non-postable because Fix aborted), link to any posted reply, link to any pushed commit. Each aborted Fix is flagged as needing human attention.
+- **Track A:** per in-scope comment, in presentation order — triage decision, Fix result, reply action (posted / skipped at Gate 2 / withheld after live-state revalidation / non-postable because Fix aborted), link to any posted reply, link to any pushed commit. Each aborted Fix is flagged as needing human attention.
 - **Track B:** per in-scope CI failure — verdict (flaky-rerun / fixed / escalated), link to the check run, link to any pushed commit.
 - **Skipped items:** count of already-handled items in both tracks (resolved threads, passing checks, informational signals).
 - **Escalations and aborts:** every item flagged as needing human attention, listed together at the end.
@@ -152,6 +176,6 @@ Delete `.super-exec/active`. This is the final act of the round. Do not leave th
 
 ## Non-negotiables
 
-Gate 1 never authorizes a reply. Draft none before step 7; Gate 2 approves exact target/body only, and any change reopens it. Track B never replies. Never auto-approve under `/loop`; report every flaky rerun; clear active last.
+Gate 1 never authorizes a reply and has no reply field; draft no reply body before the compose step. Gate 2 approves exact target/body only, in presentation order — explanation-heavy first, brief `Fix` replies last — and any change reopens it. Track B never replies. Never auto-approve under `/loop`; report every flaky rerun; clear active last.
 
 Controller delegates all MCP, `gh`, git, and substantial execution. State reader/poster/Track B are cheap; implementer is mid; standalone-triage verification/review use `/se-verify` and `/se-review`; `/se-commit` owns commit. See `/se-subagent`; never hardcode models.

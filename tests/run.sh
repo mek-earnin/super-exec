@@ -1461,9 +1461,14 @@ for (const heading of orderedHeadings) {
 }
 
 const required = [
-  [skill, 'Do not draft, generate, suggest, outline, or present any reply body — provisional, sample, or final — for any decision before step 7.', 'skill no pre-step-7 reply drafting'],
-  [skill, 'The rationale is internal analysis for the human, not a draft addressed to the reviewer.', 'skill Gate-1 rationale is not reply copy'],
-  [skill, 'First step where any reply text may be drafted.', 'skill reply composition starts at step 7'],
+  [skill, 'no reply body — provisional, sample, or final — may be drafted, generated, suggested, outlined, or presented for any decision before the Compose exact final replies step', 'skill no reply drafting before compose step'],
+  [skill, 'This gate has no reply field.', 'skill Gate 1 has no reply field'],
+  [skill, 'Every cross-reference in this skill names the step, never its number.', 'skill cross-refs by name'],
+  [skill, 'First step where any reply text may be drafted.', 'skill reply composition starts at compose step'],
+  [skill, 'Those rows are also the **presentation order**', 'skill presentation order defined once'],
+  [skill, 'Candidates sit in presentation order, so the `Fix` replies form the last block.', 'skill Fix replies last'],
+  [skill, 'the `Fix` block is there to be skimmed and may be approved as one batch', 'skill Fix block batch-approvable'],
+  [skill, 'returns to Gate 1 as `Fix (partial)` with the leftover named', 'skill partial outcome reopens Gate 1'],
   [skill, 'Placeholders such as `<SHA>` and provisional implementation wording are forbidden.', 'skill no provisional Fix replies'],
   [skill, 'Any reply target or body change after Gate-2 approval invalidates that approval', 'skill Gate-2 invalidation'],
   [skill, 'A round with only Decline / Answer / Defer items still performs this step after Gate 1.', 'skill no-Fix batch'],
@@ -1471,9 +1476,13 @@ const required = [
   [skill, 'There is no auto-approve mode, even under `/loop`.', 'skill Gate-2 loop rule'],
   [spec, 'Gate-1 approval authorizes only the approved Fix work; it never authorizes a PR reply.', 'spec Gate-1 authority'],
   [spec, 'During triage and Gate 1, the controller must not draft, generate, suggest, outline, or present any reply body', 'spec no initial reply drafting'],
-  [spec, 'reply composition begins only here, after the step-12 Fix phase has completed', 'spec post-fix reply composition'],
+  [spec, 'reply composition begins only here, after the Fix phase has completed', 'spec post-fix reply composition'],
+  [spec, 'The gate has no reply field.', 'spec Gate 1 has no reply field'],
+  [spec, '**Fix (partial)**', 'spec partial decision value'],
+  [spec, 'listed here in **presentation order**', 'spec presentation order defined once'],
+  [spec, 'the trailing `Fix` block may be approved as one batch', 'spec Fix block batch-approvable'],
   [spec, 'Final reply approval gate (mandatory)', 'spec Gate-2'],
-  [spec, 'placeholders and provisional wording are forbidden', 'spec exact post-fix bodies'],
+  [spec, 'Placeholders and provisional wording are forbidden.', 'spec exact post-fix bodies'],
   [core, 'Post-PR triage retains two human gates', 'core two-gate discipline'],
   [core, 'Gate 1 approves decisions and Fix scope only', 'core Gate-1 scope'],
   [core, 'Gate 2 approves exact final reply target/body', 'core Gate-2 scope'],
@@ -1489,6 +1498,12 @@ if (!/Gate-1 approval[\s\S]{0,120}only approved Fix work[\s\S]{0,120}never autho
 
 const forbidden = [
   [spec, /single approval/i, 'spec stale single-approval wording'],
+  [skill, /before step 7/i, 'skill stale numeric step cross-reference'],
+  [skill, /step 6 is a no-op/i, 'skill stale numeric step cross-reference'],
+  [spec, /step-12 Fix phase/i, 'spec stale numeric step cross-reference'],
+  [skill, /Group [12]/, 'skill stale Group 1/Group 2 labels'],
+  [skill, /(before|after|at|in|to) step \d/i, 'skill numeric step cross-reference'],
+  [spec, /Group [12]/, 'spec stale Group 1/Group 2 labels'],
   [skill, /Process each Track A item using the approved decisions and reply text/i, 'skill stale one-gate execution'],
   [skill, /Only after the commit is pushed, post the approved reply/i, 'skill stale auto-post after push'],
 ];
