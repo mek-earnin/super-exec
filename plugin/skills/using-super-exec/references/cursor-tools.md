@@ -6,8 +6,8 @@ Skills use Claude Code names; Cursor readers translate. This is sole translation
 
 | CC alias | Tier | Cursor |
 |---|---|---|
-| `opus` non-fast | strong: interview, planning, architecture/deep review, judge, handoff | latest `cursor-grok-*-xhigh` from the dispatch allowlist; else highest-effort non-fast `cursor-grok-*` listed (examples: `cursor-grok-4.6-xhigh`, `cursor-grok-4.6-high`). GPT Sol or Opus from the allowlist: fallback if grok family missing, or second opinion when needed. Else non-fast inherit |
-| `sonnet` pinned | mid: implementer/fixer | latest `cursor-grok-*` high |
+| `opus` non-fast | strong: interview, planning, architecture/deep review, judge, handoff | latest `grok-*-xhigh` from the dispatch allowlist; else highest-effort non-fast `grok-*` listed (examples: `grok-4.7-xhigh`). GPT Sol or Opus from the allowlist: fallback if grok family missing, or second opinion when needed. Else non-fast inherit |
+| `sonnet` pinned | mid: implementer/fixer | latest `grok-*` high |
 | `haiku` | cheap: runner/finder/git/`gh` | latest non-fast `gpt-*-luna-*` from the allowlist (example: `gpt-5.6-luna-high`); effort is the allowlisted luna slug, not a pinned medium/high. Fallback: latest non-fast `composer-*` or equivalent cheap-tier if no luna slug |
 
 Names are examples, never pinned. Resolve role from `/se-subagent`; pick the matching slug from the dispatch tool's own allowlist; never invent a slug. Set explicit non-fast `model` for every subagent — omit inherits the session model and cheap work runs on the strong model. CC `Task` maps to a cursor non-fast model subagent; typed Task → Cursor-native equivalent.
