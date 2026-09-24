@@ -38,7 +38,7 @@ Detect baseline commands. Record exact focused checks; map every required outcom
 
 ## Write and activate plan
 
-Use [plan-template.md](./plan-template.md) exactly: frontmatter `title`, `feature`, `branch`, `status: pending`; exact section order; task/checklist names brief and identical; body `## <Task name>` carries outcome, skills, dependencies, checks. Include `Final review / PR decision` only in checklist: bookkeeping, never executable work. No code, manifests/mockups, placeholders (`TBD`, `TODO`, `add error handling`, `handle edge cases`, `similar to Task N`). Work packages can span increments; check only complete named outcome.
+Use [plan-template.md](./plan-template.md) exactly: frontmatter `title`, `feature`, `branch`, `status: pending`; exact section order; checklist item names brief, identical to body `## <Task name>` headings; checklist is the only task list; body carries outcome, skills, dependencies, checks. Include `Final review / PR decision` only in checklist: bookkeeping, never executable work. No code, manifests/mockups, placeholders (`TBD`, `TODO`, `add error handling`, `handle edge cases`, `similar to Task N`). Work packages can span increments; check only complete named outcome.
 
 Read `commitPlan` from `/se-get-config`, based on physical governing-spec root: `"inheritSpec"` → same root; `false` → `.super-exec/specs/`; `"ask"` → local spec stays local, committed spec asks local vs committed. Never commit a plan over local spec. Write `<root>/[<app>/]<feature>/plans/<YYYY-MM-DD>-<plan-name>/plan-<plan-name>.md`; feature slug exactly matches spec, plan name follows `/se-slug-naming`, date is today. Repo basename/`package.json` name collision → halt and ask.
 

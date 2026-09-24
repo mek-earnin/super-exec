@@ -35,10 +35,6 @@ Deferred ledger: `<plan-folder>/deferred-findings-<plan-name>.md` (reference onl
 |---|---|---|---|
 | <requirement/outcome> | <core requested | approved derived> | <normal path + transitions> | pending |
 
-## Tasks
-- [ ] <Task 1 name>
-- [ ] <Task 2 name>
-
 ## Runtime Verification
 - Available normal proof paths: <requirement/outcome + real deployment/user path mappings>
 - Available transitions: <requirement/outcome + clean launch, reconnect, retry, Forget → Connect, permission change, crash/restart as relevant>
